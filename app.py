@@ -24,7 +24,7 @@ col_apartados = db["apartados"]
 col_config = db["configuracion"] 
 col_ventas = db["ventas"] # Para las estadísticas financieras
 
-# ---------------- CARGAR DISEÑO PERSONALIZADO ----------------
+# ---------------- CARGAR DISEÑO PERSONALIZADO (FONDO) ----------------
 config_data = col_config.find_one({"_id": "sitio_prefs"})
 fondo_b64 = config_data.get("fondo_b64") if config_data else None
 logo_b64 = config_data.get("logo_b64") if config_data else None
@@ -83,8 +83,28 @@ simbolos_core = ["Todos", "Fist ✊", "Flaming Fist 🔥✊", "Shield 🛡️", 
 # =========================== MENÚ LATERAL ============================
 # =====================================================================
 
+# NUEVA LÓGICA DEL LOGO RESPONSIVO (Se hace chico en celular)
 if logo_b64:
-    st.sidebar.image(f"data:image/png;base64,{logo_b64}", use_container_width=True)
+    logo_css = f"""
+    <style>
+    .logo-celular {{
+        width: 100%; /* Tamaño completo en PC */
+        border-radius: 8px;
+        margin-bottom: 10px;
+    }}
+    /* Cuando la pantalla sea de celular (menos de 768px de ancho) */
+    @media (max-width: 768px) {{
+        .logo-celular {{
+            width: 45%; /* Hará que la imagen sea mucho más chica */
+            margin-left: auto;
+            margin-right: auto;
+            display: block;
+        }}
+    }}
+    </style>
+    <img src="data:image/png;base64,{logo_b64}" class="logo-celular">
+    """
+    st.sidebar.markdown(logo_css, unsafe_allow_html=True)
 else:
     st.sidebar.markdown("### 🛒 Mi Tienda")
 
@@ -100,7 +120,6 @@ else:
     sub_filtro = st.sidebar.selectbox("Filtra por Símbolo", simbolos_core)
 
 # 🚨 EL CANDADO INVISIBLE 🚨
-# La cajita de admin SOLO aparece si la URL termina en ?jefe=1
 es_admin_url = st.query_params.get("jefe") == "1"
 vista_admin = "Catálogo" 
 
