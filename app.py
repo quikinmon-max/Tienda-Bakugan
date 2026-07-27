@@ -6,40 +6,9 @@ from datetime import datetime, timedelta
 # ---------------- CONFIGURACIÓN DE PÁGINA ----------------
 st.set_page_config(
     page_title="Bakugan Market", 
-    page_icon="https://cdn-icons-png.flaticon.com/512/785/785116.png", 
+    page_icon="🔥", # Usamos un emoji por defecto en vez de URL externa
     layout="wide"
 )
-
-# ---------------- IMAGEN DE FONDO HD Y ESTILOS ----------------
-imagen_de_fondo = "https://images.hdqwalls.com/download/bakugan-battle-brawlers-2v-1920x1080.jpg"
-
-fondo_css = f"""
-<style>
-.stApp {{
-    background-image: url("{imagen_de_fondo}");
-    background-size: cover;
-    background-position: center;
-    background-repeat: no-repeat;
-    background-attachment: fixed;
-}}
-.stApp > header {{
-    background-color: transparent;
-}}
-.block-container {{
-    background-color: rgba(14, 17, 23, 0.85); 
-    padding: 2rem;
-    border-radius: 15px;
-}}
-.tarjeta-cliente {{
-    background-color: rgba(255, 255, 255, 0.1);
-    padding: 15px;
-    border-radius: 10px;
-    margin-bottom: 10px;
-    border: 1px solid #444;
-}}
-</style>
-"""
-st.markdown(fondo_css, unsafe_allow_html=True)
 
 # ---------------- CONEXIÓN A MONGODB ----------------
 @st.cache_resource
@@ -52,6 +21,49 @@ client = init_connection()
 db = client["bakugan_market"]
 col_productos = db["productos"]
 col_apartados = db["apartados"]
+col_config = db["configuracion"] # NUEVA COLECCIÓN: Para guardar tus diseños
+
+# ---------------- CARGAR DISEÑO PERSONALIZADO ----------------
+config_data = col_config.find_one({"_id": "sitio_prefs"})
+fondo_b64 = config_data.get("fondo_b64") if config_data else None
+logo_b64 = config_data.get("logo_b64") if config_data else None
+
+# Si hay un fondo guardado, lo inyectamos; si no, dejamos un fondo oscuro normal
+if fondo_b64:
+    fondo_css = f"""
+    <style>
+    .stApp {{
+        background-image: url("data:image/png;base64,{fondo_b64}");
+        background-size: cover;
+        background-position: center;
+        background-repeat: no-repeat;
+        background-attachment: fixed;
+    }}
+    .stApp > header {{
+        background-color: transparent;
+    }}
+    .block-container {{
+        background-color: rgba(14, 17, 23, 0.85); 
+        padding: 2rem;
+        border-radius: 15px;
+    }}
+    </style>
+    """
+    st.markdown(fondo_css, unsafe_allow_html=True)
+else:
+    # Estilo por defecto si no has subido fondo
+    fondo_css = """
+    <style>
+    .tarjeta-cliente {
+        background-color: rgba(255, 255, 255, 0.1);
+        padding: 15px;
+        border-radius: 10px;
+        margin-bottom: 10px;
+        border: 1px solid #444;
+    }
+    </style>
+    """
+    st.markdown(fondo_css, unsafe_allow_html=True)
 
 # ---------------- LÓGICA DE CADUCIDAD (3 DÍAS) ----------------
 def limpiar_apartados_vencidos():
@@ -63,20 +75,29 @@ def limpiar_apartados_vencidos():
 
 limpiar_apartados_vencidos()
 
+# ---------------- VARIABLES GLOBALES (SOLUCIÓN AL ERROR) ----------------
+# Se definen aquí arriba para que todo el código las encuentre sin problemas
+categorias = ["Todos", "Pyrus 🔥", "Aquos 💧", "Ventus 🍃", "Darkus 🌑", "Haos ✨", "Subterra 🪨"]
+materiales = ["Todas", "Metálica", "Cartón"]
+
 # =====================================================================
 # =========================== MENÚ LATERAL ============================
 # =====================================================================
-st.sidebar.image("https://logodix.com/logo/2012028.png", width=150)
+
+# Si subiste un logo, se muestra; si no, un texto provisional
+if logo_b64:
+    st.sidebar.image(f"data:image/png;base64,{logo_b64}", use_container_width=True)
+else:
+    st.sidebar.markdown("### 🛒 Mi Tienda (Sube tu logo en Admin)")
+
 st.sidebar.header("Filtros")
 
 tipo_busqueda = st.sidebar.selectbox("¿Qué buscas?", ["Bakugans 🔥", "Cartas 🃏"])
 
 # Filtro dinámico: Cambia dependiendo de lo que busques
 if tipo_busqueda == "Bakugans 🔥":
-    categorias = ["Todos", "Pyrus 🔥", "Aquos 💧", "Ventus 🍃", "Darkus 🌑", "Haos ✨", "Subterra 🪨"]
     sub_filtro = st.sidebar.selectbox("Filtra por Atributo", categorias)
 else:
-    materiales = ["Todas", "Metálica", "Cartón"]
     sub_filtro = st.sidebar.selectbox("Filtra por Material", materiales)
 
 st.sidebar.markdown("---")
@@ -86,7 +107,7 @@ vista_admin = "Catálogo" # Vista por defecto
 
 if admin_input == st.secrets["ADMIN_PASS"]:
     st.sidebar.success("¡Bienvenido, jefe!")
-    vista_admin = st.sidebar.radio("Opciones de Administrador", ["Ver Catálogo", "➕ Agregar Producto", "📋 Ver Apartados"])
+    vista_admin = st.sidebar.radio("Opciones de Administrador", ["Ver Catálogo", "➕ Agregar Producto", "📋 Ver Apartados", "🎨 Personalizar Página"])
 elif admin_input != "":
     st.sidebar.error("Contraseña incorrecta.")
 
@@ -94,7 +115,33 @@ elif admin_input != "":
 # ======================== PANTALLA PRINCIPAL =========================
 # =====================================================================
 
-if vista_admin == "➕ Agregar Producto":
+if vista_admin == "🎨 Personalizar Página":
+    st.title("🎨 Personaliza el Diseño de tu Tienda")
+    st.markdown("Sube las imágenes directo desde tu computadora para cambiar el fondo y el logo de la página. Se guardarán en tu base de datos.")
+    st.markdown("---")
+    
+    with st.form("form_personalizacion"):
+        nuevo_fondo = st.file_uploader("Fondo de Pantalla HD (Recomendado: Horizontal)", type=["png", "jpg", "jpeg"])
+        nuevo_logo = st.file_uploader("Logo del Menú Lateral", type=["png", "jpg", "jpeg"])
+        
+        if st.form_submit_button("Guardar Diseño"):
+            update_data = {}
+            if nuevo_fondo:
+                bytes_fondo = nuevo_fondo.getvalue()
+                update_data["fondo_b64"] = base64.b64encode(bytes_fondo).decode("utf-8")
+            if nuevo_logo:
+                bytes_logo = nuevo_logo.getvalue()
+                update_data["logo_b64"] = base64.b64encode(bytes_logo).decode("utf-8")
+                
+            if update_data:
+                # Actualiza o crea el documento de preferencias (upsert=True)
+                col_config.update_one({"_id": "sitio_prefs"}, {"$set": update_data}, upsert=True)
+                st.success("¡Diseño actualizado! Recarga la página para ver los cambios.")
+                st.rerun()
+            else:
+                st.warning("No subiste ninguna imagen.")
+
+elif vista_admin == "➕ Agregar Producto":
     st.title("🛠️ Agregar nuevo producto al Catálogo")
     st.markdown("---")
     
@@ -104,14 +151,12 @@ if vista_admin == "➕ Agregar Producto":
         
         col1, col2 = st.columns(2)
         with col1:
-            # MAGIA AQUÍ: Se desactiva si seleccionas Carta
             atributo_form = st.selectbox(
                 "Atributo (Solo si es Bakugan)", 
                 categorias[1:], 
                 disabled=(tipo_prod == "Carta")
             ) 
         with col2:
-            # MAGIA AQUÍ: Se desactiva si seleccionas Bakugan
             material_form = st.selectbox(
                 "Material (Solo si es Carta)", 
                 materiales[1:], 
@@ -165,7 +210,7 @@ elif vista_admin == "📋 Ver Apartados":
         for tel, items in clientes_dict.items():
             nombre_cliente = items[0].get("comprador_nombre", "Desconocido")
             
-            st.markdown(f'<div class="tarjeta-cliente">', unsafe_allow_html=True)
+            st.markdown(f'<div class="tarjeta-cliente" style="background-color: rgba(255, 255, 255, 0.1); padding: 15px; border-radius: 10px; margin-bottom: 10px; border: 1px solid #444;">', unsafe_allow_html=True)
             st.markdown(f"#### 👤 {nombre_cliente} | 📞 WA: {tel}")
             
             total_cliente = 0
@@ -210,7 +255,6 @@ else:
                 
                 precio_mostrar = prod.get('precio', 0.0)
                 
-                # Mostramos si es atributo (Bakugan) o material (Carta)
                 if tipo_busqueda == "Bakugans 🔥":
                     st.write(f"**Atributo:** {prod.get('atributo', 'N/A')}")
                 else:
