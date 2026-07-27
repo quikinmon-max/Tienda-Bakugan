@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 # ---------------- CONFIGURACIÓN DE PÁGINA ----------------
 st.set_page_config(
     page_title="Bakugan Market", 
-    page_icon="🔥", # Usamos un emoji por defecto en vez de URL externa
+    page_icon="🔥", 
     layout="wide"
 )
 
@@ -21,14 +21,13 @@ client = init_connection()
 db = client["bakugan_market"]
 col_productos = db["productos"]
 col_apartados = db["apartados"]
-col_config = db["configuracion"] # NUEVA COLECCIÓN: Para guardar tus diseños
+col_config = db["configuracion"] 
 
 # ---------------- CARGAR DISEÑO PERSONALIZADO ----------------
 config_data = col_config.find_one({"_id": "sitio_prefs"})
 fondo_b64 = config_data.get("fondo_b64") if config_data else None
 logo_b64 = config_data.get("logo_b64") if config_data else None
 
-# Si hay un fondo guardado, lo inyectamos; si no, dejamos un fondo oscuro normal
 if fondo_b64:
     fondo_css = f"""
     <style>
@@ -51,7 +50,6 @@ if fondo_b64:
     """
     st.markdown(fondo_css, unsafe_allow_html=True)
 else:
-    # Estilo por defecto si no has subido fondo
     fondo_css = """
     <style>
     .tarjeta-cliente {
@@ -75,8 +73,7 @@ def limpiar_apartados_vencidos():
 
 limpiar_apartados_vencidos()
 
-# ---------------- VARIABLES GLOBALES (SOLUCIÓN AL ERROR) ----------------
-# Se definen aquí arriba para que todo el código las encuentre sin problemas
+# ---------------- VARIABLES GLOBALES ----------------
 categorias = ["Todos", "Pyrus 🔥", "Aquos 💧", "Ventus 🍃", "Darkus 🌑", "Haos ✨", "Subterra 🪨"]
 materiales = ["Todas", "Metálica", "Cartón"]
 
@@ -84,7 +81,6 @@ materiales = ["Todas", "Metálica", "Cartón"]
 # =========================== MENÚ LATERAL ============================
 # =====================================================================
 
-# Si subiste un logo, se muestra; si no, un texto provisional
 if logo_b64:
     st.sidebar.image(f"data:image/png;base64,{logo_b64}", use_container_width=True)
 else:
@@ -94,7 +90,6 @@ st.sidebar.header("Filtros")
 
 tipo_busqueda = st.sidebar.selectbox("¿Qué buscas?", ["Bakugans 🔥", "Cartas 🃏"])
 
-# Filtro dinámico: Cambia dependiendo de lo que busques
 if tipo_busqueda == "Bakugans 🔥":
     sub_filtro = st.sidebar.selectbox("Filtra por Atributo", categorias)
 else:
@@ -103,7 +98,7 @@ else:
 st.sidebar.markdown("---")
 admin_input = st.sidebar.text_input("🔑 Acceso Admin", type="password")
 
-vista_admin = "Catálogo" # Vista por defecto
+vista_admin = "Catálogo" 
 
 if admin_input == st.secrets["ADMIN_PASS"]:
     st.sidebar.success("¡Bienvenido, jefe!")
@@ -134,7 +129,6 @@ if vista_admin == "🎨 Personalizar Página":
                 update_data["logo_b64"] = base64.b64encode(bytes_logo).decode("utf-8")
                 
             if update_data:
-                # Actualiza o crea el documento de preferencias (upsert=True)
                 col_config.update_one({"_id": "sitio_prefs"}, {"$set": update_data}, upsert=True)
                 st.success("¡Diseño actualizado! Recarga la página para ver los cambios.")
                 st.rerun()
@@ -145,50 +139,52 @@ elif vista_admin == "➕ Agregar Producto":
     st.title("🛠️ Agregar nuevo producto al Catálogo")
     st.markdown("---")
     
-    with st.form("form_nuevo_producto", clear_on_submit=True):
-        tipo_prod = st.radio("Tipo de Producto", ["Bakugan", "Carta"])
-        nombre = st.text_input("Nombre / Descripción del Producto")
-        
-        col1, col2 = st.columns(2)
-        with col1:
-            atributo_form = st.selectbox(
-                "Atributo (Solo si es Bakugan)", 
-                categorias[1:], 
-                disabled=(tipo_prod == "Carta")
-            ) 
-        with col2:
-            material_form = st.selectbox(
-                "Material (Solo si es Carta)", 
-                materiales[1:], 
-                disabled=(tipo_prod == "Bakugan")
-            )
-        
-        precio = st.number_input("Precio ($)", min_value=0.0, step=10.0)
-        stock = st.number_input("Cantidad disponible", min_value=1, step=1)
-        imagen_subida = st.file_uploader("Sube la foto", type=["png", "jpg", "jpeg"])
-        
-        if st.form_submit_button("Subir Producto"):
-            if nombre and imagen_subida and precio > 0:
-                bytes_data = imagen_subida.getvalue()
-                base64_str = base64.b64encode(bytes_data).decode("utf-8")
-                
-                nuevo_prod = {
-                    "tipo": tipo_prod,
-                    "nombre": nombre,
-                    "precio": precio,
-                    "stock": stock,
-                    "imagen_b64": base64_str
-                }
-                
-                if tipo_prod == "Bakugan":
-                    nuevo_prod["atributo"] = atributo_form
-                else:
-                    nuevo_prod["material"] = material_form
-                    
-                col_productos.insert_one(nuevo_prod)
-                st.success(f"¡{nombre} subido con éxito!")
+    # 🚨 AQUÍ ESTÁ LA MAGIA: Quitamos el "with st.form" para que sea en tiempo real 🚨
+    tipo_prod = st.radio("Tipo de Producto", ["Bakugan", "Carta"])
+    nombre = st.text_input("Nombre / Descripción del Producto")
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        atributo_form = st.selectbox(
+            "Atributo (Solo si es Bakugan)", 
+            categorias[1:], 
+            disabled=(tipo_prod == "Carta") # Ahora sí se actualizará al instante
+        ) 
+    with col2:
+        material_form = st.selectbox(
+            "Material (Solo si es Carta)", 
+            materiales[1:], 
+            disabled=(tipo_prod == "Bakugan") # Ahora sí se actualizará al instante
+        )
+    
+    precio = st.number_input("Precio ($)", min_value=0.0, step=10.0)
+    stock = st.number_input("Cantidad disponible", min_value=1, step=1)
+    imagen_subida = st.file_uploader("Sube la foto", type=["png", "jpg", "jpeg"])
+    
+    # Cambiamos form_submit_button por un botón normal
+    if st.button("Subir Producto"):
+        if nombre and imagen_subida and precio > 0:
+            bytes_data = imagen_subida.getvalue()
+            base64_str = base64.b64encode(bytes_data).decode("utf-8")
+            
+            nuevo_prod = {
+                "tipo": tipo_prod,
+                "nombre": nombre,
+                "precio": precio,
+                "stock": stock,
+                "imagen_b64": base64_str
+            }
+            
+            if tipo_prod == "Bakugan":
+                nuevo_prod["atributo"] = atributo_form
             else:
-                st.error("Falta el nombre, la imagen o el precio.")
+                nuevo_prod["material"] = material_form
+                
+            col_productos.insert_one(nuevo_prod)
+            st.success(f"¡{nombre} subido con éxito!")
+            st.rerun() # Esto recarga la página limpiando los campos para que subas otro
+        else:
+            st.error("Falta el nombre, la imagen o el precio.")
 
 elif vista_admin == "📋 Ver Apartados":
     st.title("📋 Registro de Clientes y Apartados")
@@ -230,7 +226,6 @@ else:
     st.markdown("Selecciona tus piezas. **OJO:** Tienes 3 días para concretar o se pierden los apartados.")
     st.markdown("---")
 
-    # Armamos la consulta a la base de datos dependiendo de los filtros
     if tipo_busqueda == "Bakugans 🔥":
         query = {"stock": {"$gt": 0}, "$or": [{"tipo": "Bakugan"}, {"tipo": {"$exists": False}}]}
         if sub_filtro != "Todos":
@@ -267,7 +262,7 @@ else:
                     if st.session_state.get(f"apartado_{prod['_id']}", False):
                         st.success("✅ ¡Tu apartado está asegurado!")
                         # CAMBIA ESTE NÚMERO POR TU CELULAR
-                        link_wa = f"https://wa.me/521234567890?text=Hola,%20acabo%20de%20apartar%20{prod['nombre']}%20por%20${precio_mostrar}"
+                        link_wa = f"https://wa.me/4462879839?text=Hola,%20acabo%20de%20apartar%20{prod['nombre']}%20por%20${precio_mostrar}"
                         st.markdown(f"[**📲 HAZ CLIC AQUÍ PARA ENVIARME WHATSAPP**]({link_wa})")
                     else:
                         st.write(f"**Total a pagar:** ${precio_mostrar}")
