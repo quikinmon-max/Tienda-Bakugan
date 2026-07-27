@@ -141,63 +141,8 @@ if es_admin_url:
         st.sidebar.error("Contraseña incorrecta.")
     st.sidebar.markdown("---")
 
-# === UI DEL CARRITO EN EL MENÚ LATERAL (SOLO PÚBLICO) ===
-if not admin_autenticado or vista_admin == "Ver Catálogo":
-    
-    # Enlace de WhatsApp exitoso si acaban de apartar
-    if 'wa_link' in st.session_state:
-        st.sidebar.success("✅ ¡Apartado asegurado!")
-        st.sidebar.markdown(f"[**📲 HAZ CLIC AQUÍ PARA AVISARME POR WHATSAPP**]({st.session_state.wa_link})")
-        if st.sidebar.button("Cerrar Aviso"):
-            del st.session_state['wa_link']
-            st.rerun()
-            
-    st.sidebar.subheader(f"🛒 Mi Carrito ({len(st.session_state.carrito)})")
-    
-    if st.session_state.carrito:
-        total_carrito = 0
-        for i, item in enumerate(st.session_state.carrito):
-            col1, col2 = st.sidebar.columns([4, 1])
-            col1.markdown(f"<span style='font-size:0.9em;'>{item['nombre']} - **${item['precio']}**</span>", unsafe_allow_html=True)
-            if col2.button("❌", key=f"del_c_{i}_{item['_id']}"):
-                st.session_state.carrito.pop(i)
-                st.rerun()
-            total_carrito += item['precio']
-            
-        st.sidebar.markdown(f"### Total: ${total_carrito}")
-        
-        with st.sidebar.expander("✅ Proceder al Apartado"):
-            nom = st.text_input("Tu Nombre")
-            tel = st.text_input("Tu WhatsApp")
-            if st.button("Confirmar Todo mi Pedido"):
-                if nom and tel:
-                    # Guardamos todo en la base de datos de un jalón
-                    for prod in st.session_state.carrito:
-                        col_apartados.insert_one({
-                            "producto_id": prod["_id"],
-                            "nombre_producto": prod["nombre"],
-                            "precio": prod["precio"],
-                            "comprador_nombre": nom,
-                            "comprador_telefono": tel,
-                            "fecha_apartado": datetime.now()
-                        })
-                        col_productos.update_one({"_id": prod["_id"]}, {"$inc": {"stock": -1}})
-                    
-                    # Generamos el enlace de WhatsApp
-                    texto_wa = f"Hola, acabo de apartar {len(st.session_state.carrito)} piezas por un total de ${total_carrito}. Mi nombre es {nom}."
-                    st.session_state.wa_link = f"https://wa.me/4462879839?text={texto_wa.replace(' ', '%20')}"
-                    
-                    st.session_state.carrito = [] # Limpiamos carrito
-                    st.rerun()
-                else:
-                    st.sidebar.warning("Por favor, llena tu nombre y WhatsApp.")
-    else:
-        st.sidebar.info("El carrito está vacío. ¡Agrega algunos Bakugans!")
-        
-    st.sidebar.markdown("---")
-
-# Filtros Globales
-st.sidebar.header("Filtros")
+# Filtros Globales (Ahora más limpios sin el carrito abajo)
+st.sidebar.header("Filtros Avanzados")
 tipo_busqueda = st.sidebar.selectbox("¿Qué buscas?", ["Bakugans 🔥", "Cartas 🃏", "BakuCores 🛑"])
 
 if tipo_busqueda == "Bakugans 🔥":
@@ -386,11 +331,67 @@ else:
     
     if es_modo_admin_catalogo:
         st.title("🛠️ Administrar Catálogo e Inventario")
+        busqueda_texto = st.text_input("🔍 Buscar pieza por nombre...", placeholder="Ej. Dragonoid, Pyrus...")
     else:
-        st.title("🔥 Catálogo Libre")
+        # --- CABECERA ESTILO MERCADOLIBRE (Solo Clientes) ---
+        col_tit, col_busc, col_cart = st.columns([1.5, 2, 1.5])
         
-    # --- EL NUEVO BUSCADOR EN VIVO ---
-    busqueda_texto = st.text_input("🔍 Buscar pieza por nombre...", placeholder="Ej. Dragonoid, Pyrus, Ultra...")
+        with col_tit:
+            st.markdown("### 🔥 Catálogo Libre")
+            
+        with col_busc:
+            busqueda_texto = st.text_input("Buscar", placeholder="🔍 ¿Qué estás buscando?", label_visibility="collapsed")
+            
+        with col_cart:
+            cantidad_carrito = len(st.session_state.carrito)
+            total_carrito = sum(item['precio'] for item in st.session_state.carrito)
+            
+            # Popover: Botón que despliega el carrito de forma flotante
+            with st.popover(f"🛒 Carrito ({cantidad_carrito}) - ${total_carrito}", use_container_width=True):
+                # Mensaje de WhatsApp si acaban de comprar
+                if 'wa_link' in st.session_state:
+                    st.success("✅ ¡Tus piezas han sido apartadas!")
+                    st.markdown(f"[**📲 HAZ CLIC AQUÍ PARA AVISARME POR WHATSAPP**]({st.session_state.wa_link})")
+                    if st.button("Cerrar Aviso", use_container_width=True):
+                        del st.session_state['wa_link']
+                        st.rerun()
+                
+                st.markdown("#### Resumen de tu pedido")
+                if cantidad_carrito > 0:
+                    for i, item in enumerate(st.session_state.carrito):
+                        c1, c2 = st.columns([4, 1])
+                        c1.markdown(f"<span style='font-size:0.9em;'>{item['nombre']} - **${item['precio']}**</span>", unsafe_allow_html=True)
+                        if c2.button("❌", key=f"del_cart_{i}_{item['_id']}"):
+                            st.session_state.carrito.pop(i)
+                            st.rerun()
+                    
+                    st.markdown("---")
+                    st.markdown(f"**Total a pagar: ${total_carrito}**")
+                    nom = st.text_input("Tu Nombre", key="checkout_nom")
+                    tel = st.text_input("Tu WhatsApp", key="checkout_tel")
+                    
+                    if st.button("Confirmar Apartado", use_container_width=True, type="primary"):
+                        if nom and tel:
+                            for prod in st.session_state.carrito:
+                                col_apartados.insert_one({
+                                    "producto_id": prod["_id"],
+                                    "nombre_producto": prod["nombre"],
+                                    "precio": prod["precio"],
+                                    "comprador_nombre": nom,
+                                    "comprador_telefono": tel,
+                                    "fecha_apartado": datetime.now()
+                                })
+                                col_productos.update_one({"_id": prod["_id"]}, {"$inc": {"stock": -1}})
+                            
+                            texto_wa = f"Hola, acabo de apartar {cantidad_carrito} piezas por un total de ${total_carrito}. Mi nombre es {nom}."
+                            st.session_state.wa_link = f"https://wa.me/4462879839?text={texto_wa.replace(' ', '%20')}"
+                            st.session_state.carrito = [] 
+                            st.rerun()
+                        else:
+                            st.warning("⚠️ Escribe tu nombre y WhatsApp para procesar.")
+                else:
+                    st.info("Tu carrito está vacío. ¡Empieza a llenarlo!")
+
     st.markdown("---")
 
     query = {}
@@ -398,7 +399,6 @@ else:
         query["stock"] = {"$gt": 0}
 
     if busqueda_texto:
-        # Busca cualquier coincidencia en el nombre, sin importar mayúsculas
         query["nombre"] = {"$regex": busqueda_texto, "$options": "i"}
 
     if tipo_busqueda == "Bakugans 🔥":
@@ -438,7 +438,6 @@ else:
                 precio_mostrar = prod.get('precio', 0.0)
                 stock_actual = prod.get('stock', 0)
                 
-                # Calcular cuántos de este modelo exacto ya metió al carrito
                 en_carrito = sum(1 for item in st.session_state.carrito if item["_id"] == prod["_id"])
                 stock_disponible_real = stock_actual - en_carrito
                 
@@ -453,7 +452,6 @@ else:
                     
                 st.write(f"**Precio:** ${precio_mostrar}")
                 
-                # === BOTÓN DE CARRITO (SOLO PÚBLICO) ===
                 if stock_actual > 0 and not es_modo_admin_catalogo:
                     if stock_disponible_real > 0:
                         if st.button("🛒 Añadir al carrito", key=f"add_{prod['_id']}", use_container_width=True):
@@ -466,7 +464,6 @@ else:
                     else:
                         st.button("✅ En el carrito (Máx)", disabled=True, key=f"max_{prod['_id']}", use_container_width=True)
 
-                # === BOTONES DE ADMIN ===
                 if es_modo_admin_catalogo:
                     st.markdown("---")
                     c_stock, c_del = st.columns(2)
