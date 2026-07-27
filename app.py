@@ -22,47 +22,62 @@ db = client["bakugan_market"]
 col_productos = db["productos"]
 col_apartados = db["apartados"]
 col_config = db["configuracion"] 
-col_ventas = db["ventas"] # Para las estadísticas financieras
+col_ventas = db["ventas"] 
 
-# ---------------- CARGAR DISEÑO PERSONALIZADO (FONDO) ----------------
+# ---------------- CARGAR DISEÑO PERSONALIZADO (FONDO Y CSS) ----------------
 config_data = col_config.find_one({"_id": "sitio_prefs"})
 fondo_b64 = config_data.get("fondo_b64") if config_data else None
 logo_b64 = config_data.get("logo_b64") if config_data else None
 
-if fondo_b64:
-    fondo_css = f"""
-    <style>
-    .stApp {{
-        background-image: url("data:image/png;base64,{fondo_b64}");
-        background-size: cover;
-        background-position: center;
-        background-repeat: no-repeat;
-        background-attachment: fixed;
+# CSS Global para el fondo, las tarjetas y las nuevas imágenes responsivas
+css_global = f"""
+<style>
+/* Fondo general */
+.stApp {{
+    {'background-image: url("data:image/png;base64,' + fondo_b64 + '");' if fondo_b64 else ''}
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    background-attachment: fixed;
+}}
+.stApp > header {{
+    background-color: transparent;
+}}
+.block-container {{
+    background-color: rgba(14, 17, 23, 0.85); 
+    padding: 2rem;
+    border-radius: 15px;
+}}
+.tarjeta-cliente {{
+    background-color: rgba(255, 255, 255, 0.1);
+    padding: 15px;
+    border-radius: 10px;
+    margin-bottom: 10px;
+    border: 1px solid #444;
+}}
+
+/* REGLA MAGICA PARA LAS FOTOS DE LOS BAKUGANS EN CELULAR */
+.producto-img {{
+    width: 100%;
+    border-radius: 8px;
+    object-fit: contain;
+    max-height: 250px; /* Tamaño máximo en PC */
+    margin-bottom: 10px;
+}}
+
+@media (max-width: 768px) {{
+    .producto-img {{
+        max-height: 160px; /* Se hacen mucho más chaparritos en celular */
+        width: auto;
+        max-width: 100%;
+        display: block;
+        margin-left: auto;
+        margin-right: auto;
     }}
-    .stApp > header {{
-        background-color: transparent;
-    }}
-    .block-container {{
-        background-color: rgba(14, 17, 23, 0.85); 
-        padding: 2rem;
-        border-radius: 15px;
-    }}
-    </style>
-    """
-    st.markdown(fondo_css, unsafe_allow_html=True)
-else:
-    fondo_css = """
-    <style>
-    .tarjeta-cliente {
-        background-color: rgba(255, 255, 255, 0.1);
-        padding: 15px;
-        border-radius: 10px;
-        margin-bottom: 10px;
-        border: 1px solid #444;
-    }
-    </style>
-    """
-    st.markdown(fondo_css, unsafe_allow_html=True)
+}}
+</style>
+"""
+st.markdown(css_global, unsafe_allow_html=True)
 
 # ---------------- LÓGICA DE CADUCIDAD (3 DÍAS) ----------------
 def limpiar_apartados_vencidos():
@@ -185,7 +200,6 @@ if vista_admin == "📊 Finanzas y Ventas":
         st.markdown("---")
         st.subheader("📝 Historial Detallado de Ventas")
         for v in reversed(ventas):
-            # Calculamos las variables limpias para las tarjetas HTML
             neta = v.get('precio_total', 0) - v.get('gasto_envio', 0)
             cobro_envio = v.get('ingreso_envio', 0)
             gasto_envio = v.get('gasto_envio', 0)
@@ -211,9 +225,7 @@ if vista_admin == "📊 Finanzas y Ventas":
 
 elif vista_admin == "🎨 Personalizar Página":
     st.title("🎨 Personaliza el Diseño de tu Tienda")
-    st.markdown("Sube las imágenes directo desde tu computadora para cambiar el fondo y el logo de la página.")
     st.markdown("---")
-    
     with st.form("form_personalizacion"):
         nuevo_fondo = st.file_uploader("Fondo de Pantalla HD (Recomendado: Horizontal)", type=["png", "jpg", "jpeg"])
         nuevo_logo = st.file_uploader("Logo del Menú Lateral", type=["png", "jpg", "jpeg"])
@@ -231,8 +243,6 @@ elif vista_admin == "🎨 Personalizar Página":
                 col_config.update_one({"_id": "sitio_prefs"}, {"$set": update_data}, upsert=True)
                 st.success("¡Diseño actualizado! Recarga la página para ver los cambios.")
                 st.rerun()
-            else:
-                st.warning("No subiste ninguna imagen.")
 
 elif vista_admin == "➕ Agregar Producto":
     st.title("🛠️ Agregar nuevo producto al Catálogo")
@@ -251,19 +261,27 @@ elif vista_admin == "➕ Agregar Producto":
     
     precio = st.number_input("Precio ($)", min_value=0.0, step=10.0)
     stock = st.number_input("Cantidad disponible", min_value=1, step=1)
-    imagen_subida = st.file_uploader("Sube la foto", type=["png", "jpg", "jpeg"])
+    
+    # NUEVO: Acepta múltiples imágenes
+    imagenes_subidas = st.file_uploader("Sube hasta 5 fotos (Frontal, trasera, detalles...)", type=["png", "jpg", "jpeg"], accept_multiple_files=True)
     
     if st.button("Subir Producto"):
-        if nombre and imagen_subida and precio > 0:
-            bytes_data = imagen_subida.getvalue()
-            base64_str = base64.b64encode(bytes_data).decode("utf-8")
+        if nombre and imagenes_subidas and precio > 0:
+            if len(imagenes_subidas) > 5:
+                st.warning("Has subido más de 5 fotos. Solo se guardarán las primeras 5 para optimizar tu base de datos.")
+                imagenes_subidas = imagenes_subidas[:5]
+                
+            lista_imagenes_b64 = []
+            for img in imagenes_subidas:
+                bytes_data = img.getvalue()
+                lista_imagenes_b64.append(base64.b64encode(bytes_data).decode("utf-8"))
             
             nuevo_prod = {
                 "tipo": tipo_prod,
                 "nombre": nombre,
                 "precio": precio,
                 "stock": stock,
-                "imagen_b64": base64_str
+                "imagenes_b64": lista_imagenes_b64 # Guardamos el array de fotos
             }
             
             if tipo_prod == "Bakugan":
@@ -277,11 +295,10 @@ elif vista_admin == "➕ Agregar Producto":
             st.success(f"¡{nombre} subido con éxito!")
             st.rerun() 
         else:
-            st.error("Falta el nombre, la imagen o el precio.")
+            st.error("Falta el nombre, al menos 1 imagen o el precio.")
 
 elif vista_admin == "📋 Ver Apartados":
     st.title("📋 Registro de Clientes y Apartados")
-    st.markdown("Confirma pagos para concretar ventas o cancela pedidos para liberar stock.")
     st.markdown("---")
     
     todos_los_apartados = list(col_apartados.find({}))
@@ -317,7 +334,6 @@ elif vista_admin == "📋 Ver Apartados":
             
             with col_conf:
                 with st.expander("✅ Confirmar Pago"):
-                    st.write(f"Costo piezas: **${total_cliente}**")
                     cobro_envio = st.number_input("Dinero extra cliente (Envío) $", min_value=0.0, step=10.0, key=f"cobro_{tel}")
                     gastos = st.number_input("Costo de la guía (Paquetería) $", min_value=0.0, step=10.0, key=f"gasto_{tel}")
                     obs = st.text_input("Observaciones", key=f"obs_{tel}")
@@ -341,7 +357,6 @@ elif vista_admin == "📋 Ver Apartados":
 
             with col_canc:
                 with st.expander("🚫 Cancelar Pedido"):
-                    st.warning("Esto liberará las piezas y regresarán al catálogo público.")
                     if st.button("Confirmar Cancelación", key=f"btn_cancel_{tel}"):
                         for item in items:
                             col_productos.update_one({"_id": item["producto_id"]}, {"$inc": {"stock": 1}})
@@ -352,18 +367,15 @@ elif vista_admin == "📋 Ver Apartados":
             st.markdown("</div>", unsafe_allow_html=True)
 
 else:
-    # --- VISTA DEL CATÁLOGO PÚBLICO Y ADMIN (GESTIÓN COMPLETA) ---
+    # --- VISTA DEL CATÁLOGO PÚBLICO Y ADMIN ---
     es_modo_admin_catalogo = admin_autenticado and vista_admin == "Ver Catálogo"
     
     if es_modo_admin_catalogo:
         st.title("🛠️ Administrar Catálogo e Inventario")
-        st.markdown("Aquí ves TODOS tus productos (incluso los agotados). Puedes reabastecerlos o eliminarlos para siempre.")
     else:
         st.title("🔥 Catálogo Libre")
-        st.markdown("Selecciona tus piezas. **OJO:** Tienes 3 días para concretar o se pierden los apartados.")
     st.markdown("---")
 
-    # Lógica de búsqueda: El Admin ve todo (incluso stock 0), los clientes solo ven stock > 0
     query = {}
     if not es_modo_admin_catalogo:
         query["stock"] = {"$gt": 0}
@@ -391,8 +403,25 @@ else:
             col = cols[index % 3] 
             with col:
                 st.markdown(f"### {prod['nombre']}")
-                if "imagen_b64" in prod:
-                    st.image(base64.b64decode(prod["imagen_b64"]), use_container_width=True)
+                
+                # --- NUEVA LÓGICA DE GALERÍA DE IMÁGENES ---
+                # Recuperamos el arreglo nuevo, o el viejo si es un producto antiguo
+                imagenes_del_producto = prod.get("imagenes_b64", [])
+                if not imagenes_del_producto and "imagen_b64" in prod:
+                    imagenes_del_producto = [prod["imagen_b64"]]
+                
+                if imagenes_del_producto:
+                    if len(imagenes_del_producto) == 1:
+                        # Si solo tiene 1 foto, se muestra directa con nuestra clase HTML
+                        st.markdown(f'<img src="data:image/png;base64,{imagenes_del_producto[0]}" class="producto-img">', unsafe_allow_html=True)
+                    else:
+                        # Si tiene varias, creamos un sistema de pestañas (tabs)
+                        pestanas = st.tabs([f"📸 {i+1}" for i in range(len(imagenes_del_producto))])
+                        for i, pestana in enumerate(pestanas):
+                            with pestana:
+                                st.markdown(f'<img src="data:image/png;base64,{imagenes_del_producto[i]}" class="producto-img">', unsafe_allow_html=True)
+                
+                # ---------------------------------------------
                 
                 precio_mostrar = prod.get('precio', 0.0)
                 stock_actual = prod.get('stock', 0)
@@ -404,7 +433,6 @@ else:
                 else:
                     st.write(f"**Símbolo:** {prod.get('simbolo', 'N/A')}")
                 
-                # Etiqueta de stock visualmente diferente si es 0 (solo lo ve el admin)
                 if stock_actual == 0:
                     st.markdown("🚨 **ESTADO:** <span style='color:#e74c3c; font-weight:bold;'>AGOTADO (0)</span>", unsafe_allow_html=True)
                 else:
@@ -412,7 +440,6 @@ else:
                     
                 st.write(f"**Precio:** ${precio_mostrar}")
                 
-                # === VISTA CLIENTE NORMAL (Apartar) ===
                 if stock_actual > 0 and not es_modo_admin_catalogo:
                     with st.expander("🛒 Apartar pieza"):
                         if st.session_state.get(f"apartado_{prod['_id']}", False):
@@ -421,7 +448,6 @@ else:
                             st.markdown(f"[**📲 HAZ CLIC AQUÍ PARA ENVIARME WHATSAPP**]({link_wa})")
                         else:
                             st.write(f"**Total a pagar:** ${precio_mostrar}")
-                            st.caption("🚨 *Nota: El costo de envío es aparte.*")
                             
                             nom = st.text_input("Tu Nombre", key=f"n_{prod['_id']}")
                             tel = st.text_input("Tu WhatsApp", key=f"t_{prod['_id']}")
@@ -442,23 +468,17 @@ else:
                                 else:
                                     st.warning("Escribe tu nombre y teléfono para apartarlo.")
 
-                # === BOTONES DE ADMIN (Solo visibles si estás como admin) ===
                 if es_modo_admin_catalogo:
                     st.markdown("---")
-                    st.markdown("⚙️ **Acciones de Admin**")
-                    
                     c_stock, c_del = st.columns(2)
                     with c_stock:
                         add_stk = st.number_input("Sumar piezas", min_value=1, step=1, key=f"add_{prod['_id']}")
                         if st.button("➕ Stock", key=f"btn_stk_{prod['_id']}", use_container_width=True):
                             col_productos.update_one({"_id": prod["_id"]}, {"$inc": {"stock": add_stk}})
-                            st.success("Stock actualizado.")
                             st.rerun()
-                            
                     with c_del:
-                        st.write("") # Espaciador para alinear con el input
+                        st.write("") 
                         st.write("")
                         if st.button("🗑️ Eliminar", key=f"del_{prod['_id']}", use_container_width=True):
                             col_productos.delete_one({"_id": prod["_id"]})
-                            st.success("Producto eliminado.")
                             st.rerun()
