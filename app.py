@@ -76,6 +76,8 @@ limpiar_apartados_vencidos()
 # ---------------- VARIABLES GLOBALES ----------------
 categorias = ["Todos", "Pyrus 🔥", "Aquos 💧", "Ventus 🍃", "Darkus 🌑", "Haos ✨", "Subterra 🪨"]
 materiales = ["Todas", "Metálica", "Cartón"]
+# NUEVO: Símbolos para los BakuCores
+simbolos_core = ["Todos", "Fist (Puño) ✊", "Flaming Fist (Puño en llamas) 🔥✊", "Shield (Escudo) 🛡️", "Magic Shield (Escudo mágico) ✨🛡️", "Helix (Hélice) 🧬"]
 
 # =====================================================================
 # =========================== MENÚ LATERAL ============================
@@ -88,12 +90,15 @@ else:
 
 st.sidebar.header("Filtros")
 
-tipo_busqueda = st.sidebar.selectbox("¿Qué buscas?", ["Bakugans 🔥", "Cartas 🃏"])
+# NUEVO: Agregamos BakuCores a la búsqueda principal
+tipo_busqueda = st.sidebar.selectbox("¿Qué buscas?", ["Bakugans 🔥", "Cartas 🃏", "BakuCores 🛑"])
 
 if tipo_busqueda == "Bakugans 🔥":
     sub_filtro = st.sidebar.selectbox("Filtra por Atributo", categorias)
-else:
+elif tipo_busqueda == "Cartas 🃏":
     sub_filtro = st.sidebar.selectbox("Filtra por Material", materiales)
+else:
+    sub_filtro = st.sidebar.selectbox("Filtra por Símbolo", simbolos_core)
 
 st.sidebar.markdown("---")
 admin_input = st.sidebar.text_input("🔑 Acceso Admin", type="password")
@@ -139,29 +144,35 @@ elif vista_admin == "➕ Agregar Producto":
     st.title("🛠️ Agregar nuevo producto al Catálogo")
     st.markdown("---")
     
-    # 🚨 AQUÍ ESTÁ LA MAGIA: Quitamos el "with st.form" para que sea en tiempo real 🚨
-    tipo_prod = st.radio("Tipo de Producto", ["Bakugan", "Carta"])
+    # NUEVO: Se agrega la opción BakuCore
+    tipo_prod = st.radio("Tipo de Producto", ["Bakugan", "Carta", "BakuCore"])
     nombre = st.text_input("Nombre / Descripción del Producto")
     
-    col1, col2 = st.columns(2)
+    # Ahora usamos 3 columnas para que los filtros se acomoden bien
+    col1, col2, col3 = st.columns(3)
     with col1:
         atributo_form = st.selectbox(
-            "Atributo (Solo si es Bakugan)", 
+            "Atributo (Bakugans)", 
             categorias[1:], 
-            disabled=(tipo_prod == "Carta") # Ahora sí se actualizará al instante
+            disabled=(tipo_prod != "Bakugan") 
         ) 
     with col2:
         material_form = st.selectbox(
-            "Material (Solo si es Carta)", 
+            "Material (Cartas)", 
             materiales[1:], 
-            disabled=(tipo_prod == "Bakugan") # Ahora sí se actualizará al instante
+            disabled=(tipo_prod != "Carta") 
+        )
+    with col3:
+        simbolo_form = st.selectbox(
+            "Símbolo (BakuCores)", 
+            simbolos_core[1:], 
+            disabled=(tipo_prod != "BakuCore") 
         )
     
     precio = st.number_input("Precio ($)", min_value=0.0, step=10.0)
     stock = st.number_input("Cantidad disponible", min_value=1, step=1)
     imagen_subida = st.file_uploader("Sube la foto", type=["png", "jpg", "jpeg"])
     
-    # Cambiamos form_submit_button por un botón normal
     if st.button("Subir Producto"):
         if nombre and imagen_subida and precio > 0:
             bytes_data = imagen_subida.getvalue()
@@ -175,14 +186,17 @@ elif vista_admin == "➕ Agregar Producto":
                 "imagen_b64": base64_str
             }
             
+            # Guardar la característica correcta según el tipo
             if tipo_prod == "Bakugan":
                 nuevo_prod["atributo"] = atributo_form
-            else:
+            elif tipo_prod == "Carta":
                 nuevo_prod["material"] = material_form
+            else:
+                nuevo_prod["simbolo"] = simbolo_form
                 
             col_productos.insert_one(nuevo_prod)
             st.success(f"¡{nombre} subido con éxito!")
-            st.rerun() # Esto recarga la página limpiando los campos para que subas otro
+            st.rerun() 
         else:
             st.error("Falta el nombre, la imagen o el precio.")
 
@@ -226,14 +240,19 @@ else:
     st.markdown("Selecciona tus piezas. **OJO:** Tienes 3 días para concretar o se pierden los apartados.")
     st.markdown("---")
 
+    # NUEVO: Lógica de búsqueda adaptada para los 3 tipos de productos
     if tipo_busqueda == "Bakugans 🔥":
         query = {"stock": {"$gt": 0}, "$or": [{"tipo": "Bakugan"}, {"tipo": {"$exists": False}}]}
         if sub_filtro != "Todos":
             query["atributo"] = sub_filtro
-    else:
+    elif tipo_busqueda == "Cartas 🃏":
         query = {"stock": {"$gt": 0}, "tipo": "Carta"}
         if sub_filtro != "Todas":
             query["material"] = sub_filtro
+    else: # BakuCores
+        query = {"stock": {"$gt": 0}, "tipo": "BakuCore"}
+        if sub_filtro != "Todos":
+            query["simbolo"] = sub_filtro
 
     productos = list(col_productos.find(query))
 
@@ -250,10 +269,13 @@ else:
                 
                 precio_mostrar = prod.get('precio', 0.0)
                 
+                # Mostrar la característica correcta dependiendo del tipo de producto
                 if tipo_busqueda == "Bakugans 🔥":
                     st.write(f"**Atributo:** {prod.get('atributo', 'N/A')}")
-                else:
+                elif tipo_busqueda == "Cartas 🃏":
                     st.write(f"**Material:** {prod.get('material', 'N/A')}")
+                else:
+                    st.write(f"**Símbolo:** {prod.get('simbolo', 'N/A')}")
                     
                 st.write(f"**Disponibles:** {prod['stock']}")
                 st.write(f"**Precio:** ${precio_mostrar}")
