@@ -33,6 +33,7 @@ config_data = col_config.find_one({"_id": "sitio_prefs"})
 fondo_b64 = config_data.get("fondo_b64") if config_data else None
 logo_b64 = config_data.get("logo_b64") if config_data else None
 
+# === AQUÍ INYECTAMOS LAS MEJORAS PARA iPHONE ===
 css_global = f"""
 <style>
 .stApp {{
@@ -64,6 +65,8 @@ css_global = f"""
     max-height: 250px; 
     margin-bottom: 10px;
 }}
+
+/* AJUSTES RESPONSIVOS PARA MÓVILES Y iPHONE */
 @media (max-width: 768px) {{
     .producto-img {{
         max-height: 160px; 
@@ -72,6 +75,26 @@ css_global = f"""
         display: block;
         margin-left: auto;
         margin-right: auto;
+    }}
+    
+    /* Agrandar barra de búsqueda para que iOS no haga zoom automático (16px) */
+    .stTextInput input {{
+        font-size: 16px !important;
+        padding: 0.6rem !important;
+    }}
+    
+    /* Agrandar botones generales (Añadir al carrito) */
+    .stButton > button {{
+        font-size: 16px !important;
+        padding: 0.5rem 1rem !important;
+        min-height: 2.8rem !important;
+    }}
+    
+    /* Agrandar botón del Popover (El Carrito Superior) */
+    div[data-testid="stPopover"] > button {{
+        font-size: 16px !important;
+        padding: 0.6rem 1rem !important;
+        min-height: 2.8rem !important;
     }}
 }}
 </style>
@@ -141,7 +164,7 @@ if es_admin_url:
         st.sidebar.error("Contraseña incorrecta.")
     st.sidebar.markdown("---")
 
-# Filtros Globales (Ahora más limpios sin el carrito abajo)
+# Filtros Globales 
 st.sidebar.header("Filtros Avanzados")
 tipo_busqueda = st.sidebar.selectbox("¿Qué buscas?", ["Bakugans 🔥", "Cartas 🃏", "BakuCores 🛑"])
 
@@ -346,9 +369,7 @@ else:
             cantidad_carrito = len(st.session_state.carrito)
             total_carrito = sum(item['precio'] for item in st.session_state.carrito)
             
-            # Popover: Botón que despliega el carrito de forma flotante
             with st.popover(f"🛒 Carrito ({cantidad_carrito}) - ${total_carrito}", use_container_width=True):
-                # Mensaje de WhatsApp si acaban de comprar
                 if 'wa_link' in st.session_state:
                     st.success("✅ ¡Tus piezas han sido apartadas!")
                     st.markdown(f"[**📲 HAZ CLIC AQUÍ PARA AVISARME POR WHATSAPP**]({st.session_state.wa_link})")
