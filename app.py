@@ -83,19 +83,17 @@ simbolos_core = ["Todos", "Fist ✊", "Flaming Fist 🔥✊", "Shield 🛡️", 
 # =========================== MENÚ LATERAL ============================
 # =====================================================================
 
-# NUEVA LÓGICA DEL LOGO RESPONSIVO (Se hace chico en celular)
 if logo_b64:
     logo_css = f"""
     <style>
     .logo-celular {{
-        width: 100%; /* Tamaño completo en PC */
+        width: 100%;
         border-radius: 8px;
         margin-bottom: 10px;
     }}
-    /* Cuando la pantalla sea de celular (menos de 768px de ancho) */
     @media (max-width: 768px) {{
         .logo-celular {{
-            width: 45%; /* Hará que la imagen sea mucho más chica */
+            width: 45%; 
             margin-left: auto;
             margin-right: auto;
             display: block;
@@ -119,15 +117,17 @@ elif tipo_busqueda == "Cartas 🃏":
 else:
     sub_filtro = st.sidebar.selectbox("Filtra por Símbolo", simbolos_core)
 
-# 🚨 EL CANDADO INVISIBLE 🚨
+# 🚨 EL CANDADO INVISIBLE Y AUTENTICACIÓN 🚨
 es_admin_url = st.query_params.get("jefe") == "1"
 vista_admin = "Catálogo" 
+admin_autenticado = False
 
 if es_admin_url:
     st.sidebar.markdown("---")
     admin_input = st.sidebar.text_input("🔑 Acceso Admin", type="password")
     
     if admin_input == st.secrets["ADMIN_PASS"]:
+        admin_autenticado = True
         st.sidebar.success("¡Bienvenido, jefe!")
         vista_admin = st.sidebar.radio("Opciones de Administrador", [
             "Ver Catálogo", 
@@ -164,9 +164,9 @@ if vista_admin == "📊 Finanzas y Ventas":
         ventas_anio = filtrar_por_fecha(365)
         
         def calcular_metricas(lista_ventas):
-            ingresos = sum(v.get("precio_total", 0) for v in lista_ventas) # Suma piezas + cobro extra de envío
-            gastos = sum(v.get("gasto_envio", 0) for v in lista_ventas)    # Suma lo que te costó la guía
-            ganancia = ingresos - gastos                                   # Tu ganancia real neta
+            ingresos = sum(v.get("precio_total", 0) for v in lista_ventas)
+            gastos = sum(v.get("gasto_envio", 0) for v in lista_ventas)
+            ganancia = ingresos - gastos
             return ingresos, gastos, ganancia
             
         tab1, tab2, tab3, tab4 = st.tabs(["Hoy", "Últimos 7 Días", "Últimos 30 Días", "Este Año"])
@@ -189,7 +189,7 @@ if vista_admin == "📊 Finanzas y Ventas":
 
 elif vista_admin == "🎨 Personalizar Página":
     st.title("🎨 Personaliza el Diseño de tu Tienda")
-    st.markdown("Sube las imágenes directo desde tu computadora para cambiar el fondo y el logo de la página. Se guardarán en tu base de datos.")
+    st.markdown("Sube las imágenes directo desde tu computadora para cambiar el fondo y el logo de la página.")
     st.markdown("---")
     
     with st.form("form_personalizacion"):
@@ -259,7 +259,7 @@ elif vista_admin == "➕ Agregar Producto":
 
 elif vista_admin == "📋 Ver Apartados":
     st.title("📋 Registro de Clientes y Apartados")
-    st.markdown("Confirma pagos para que pasen a tus métricas de ventas y libera inventario.")
+    st.markdown("Confirma pagos para concretar ventas o cancela pedidos para liberar stock.")
     st.markdown("---")
     
     todos_los_apartados = list(col_apartados.find({}))
@@ -277,7 +277,7 @@ elif vista_admin == "📋 Ver Apartados":
         for tel, items in clientes_dict.items():
             nombre_cliente = items[0].get("comprador_nombre", "Desconocido")
             
-            st.markdown(f'<div class="tarjeta-cliente" style="background-color: rgba(255, 255, 255, 0.1); padding: 15px; border-radius: 10px; margin-bottom: 10px; border: 1px solid #444;">', unsafe_allow_html=True)
+            st.markdown(f'<div class="tarjeta-cliente">', unsafe_allow_html=True)
             st.markdown(f"#### 👤 {nombre_cliente} | 📞 WA: {tel}")
             
             total_cliente = 0
@@ -291,38 +291,52 @@ elif vista_admin == "📋 Ver Apartados":
             
             st.markdown(f"**Total piezas a cobrar:** <span style='color:#2ecc71; font-size:1.2em;'>${total_cliente}</span>", unsafe_allow_html=True)
             
-            with st.expander("✅ Confirmar Pago de este cliente"):
-                st.write(f"Costo de las piezas: **${total_cliente}**")
-                
-                # Campos separados para el cálculo financiero exacto
-                cobro_envio = st.number_input("Dinero extra que te depositó el cliente (Para el envío) $", min_value=0.0, step=10.0, key=f"cobro_{tel}")
-                gastos = st.number_input("Costo de la guía (Lo que tú le pagaste a la paquetería) $", min_value=0.0, step=10.0, key=f"gasto_{tel}")
-                
-                obs = st.text_input("Observaciones (Ej. Envío por DHL, guía #123)", key=f"obs_{tel}")
-                
-                if st.button("Procesar Venta", key=f"btn_venta_{tel}"):
-                    col_ventas.insert_one({
-                        "cliente": nombre_cliente,
-                        "telefono": tel,
-                        "productos": nombres_items,
-                        "precio_productos": total_cliente,
-                        "ingreso_envio": cobro_envio,
-                        "precio_total": total_cliente + cobro_envio, # El ingreso bruto total
-                        "gasto_envio": gastos,
-                        "observaciones": obs,
-                        "fecha_venta": datetime.now()
-                    })
-                    for item in items:
-                        col_apartados.delete_one({"_id": item["_id"]})
+            col_conf, col_canc = st.columns(2)
+            
+            with col_conf:
+                with st.expander("✅ Confirmar Pago"):
+                    st.write(f"Costo piezas: **${total_cliente}**")
+                    cobro_envio = st.number_input("Dinero extra cliente (Envío) $", min_value=0.0, step=10.0, key=f"cobro_{tel}")
+                    gastos = st.number_input("Costo de la guía (Paquetería) $", min_value=0.0, step=10.0, key=f"gasto_{tel}")
+                    obs = st.text_input("Observaciones", key=f"obs_{tel}")
+                    
+                    if st.button("Procesar Venta", key=f"btn_venta_{tel}"):
+                        col_ventas.insert_one({
+                            "cliente": nombre_cliente,
+                            "telefono": tel,
+                            "productos": nombres_items,
+                            "precio_productos": total_cliente,
+                            "ingreso_envio": cobro_envio,
+                            "precio_total": total_cliente + cobro_envio,
+                            "gasto_envio": gastos,
+                            "observaciones": obs,
+                            "fecha_venta": datetime.now()
+                        })
+                        for item in items:
+                            col_apartados.delete_one({"_id": item["_id"]})
+                        st.success("¡Venta registrada!")
+                        st.rerun()
+
+            with col_canc:
+                with st.expander("🚫 Cancelar Pedido"):
+                    st.warning("Esto liberará las piezas y regresarán al catálogo público.")
+                    if st.button("Confirmar Cancelación", key=f"btn_cancel_{tel}"):
+                        for item in items:
+                            col_productos.update_one({"_id": item["producto_id"]}, {"$inc": {"stock": 1}})
+                            col_apartados.delete_one({"_id": item["_id"]})
+                        st.success("¡Pedido cancelado y stock devuelto!")
+                        st.rerun()
                         
-                    st.success("¡Venta registrada con contabilidad exacta! Revisa tu panel de Finanzas.")
-                    st.rerun()
             st.markdown("</div>", unsafe_allow_html=True)
 
 else:
-    # --- VISTA DEL CATÁLOGO PÚBLICO ---
-    st.title("🔥 Catálogo Libre")
-    st.markdown("Selecciona tus piezas. **OJO:** Tienes 3 días para concretar o se pierden los apartados.")
+    # --- VISTA DEL CATÁLOGO PÚBLICO / ADMIN ---
+    if admin_autenticado and vista_admin == "Ver Catálogo":
+        st.title("🛠️ Administrar Catálogo")
+        st.markdown("Aquí puedes ver tu tienda tal cual la ven los clientes, pero con el superpoder de **eliminar** artículos permanentemente.")
+    else:
+        st.title("🔥 Catálogo Libre")
+        st.markdown("Selecciona tus piezas. **OJO:** Tienes 3 días para concretar o se pierden los apartados.")
     st.markdown("---")
 
     if tipo_busqueda == "Bakugans 🔥":
@@ -366,7 +380,6 @@ else:
                 with st.expander("🛒 Apartar pieza"):
                     if st.session_state.get(f"apartado_{prod['_id']}", False):
                         st.success("✅ ¡Tu apartado está asegurado!")
-                        # TU NÚMERO DE WHATSAPP
                         link_wa = f"https://wa.me/4462879839?text=Hola,%20acabo%20de%20apartar%20{prod['nombre']}%20por%20${precio_mostrar}"
                         st.markdown(f"[**📲 HAZ CLIC AQUÍ PARA ENVIARME WHATSAPP**]({link_wa})")
                     else:
@@ -391,3 +404,11 @@ else:
                                 st.rerun() 
                             else:
                                 st.warning("Escribe tu nombre y teléfono para apartarlo.")
+
+                # === BOTÓN DE ELIMINAR (SOLO PARA ADMIN) ===
+                if admin_autenticado and vista_admin == "Ver Catálogo":
+                    st.markdown("---")
+                    if st.button("🗑️ Eliminar Producto", key=f"del_{prod['_id']}"):
+                        col_productos.delete_one({"_id": prod["_id"]})
+                        st.success("Producto eliminado del catálogo.")
+                        st.rerun()
