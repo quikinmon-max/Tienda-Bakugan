@@ -10,6 +10,10 @@ st.set_page_config(
     layout="wide"
 )
 
+# ---------------- INICIALIZAR CARRITO EN MEMORIA ----------------
+if 'carrito' not in st.session_state:
+    st.session_state.carrito = []
+
 # ---------------- CONEXIÓN A MONGODB ----------------
 @st.cache_resource
 def init_connection():
@@ -29,10 +33,8 @@ config_data = col_config.find_one({"_id": "sitio_prefs"})
 fondo_b64 = config_data.get("fondo_b64") if config_data else None
 logo_b64 = config_data.get("logo_b64") if config_data else None
 
-# CSS Global para el fondo, las tarjetas y las nuevas imágenes responsivas
 css_global = f"""
 <style>
-/* Fondo general */
 .stApp {{
     {'background-image: url("data:image/png;base64,' + fondo_b64 + '");' if fondo_b64 else ''}
     background-size: cover;
@@ -55,19 +57,16 @@ css_global = f"""
     margin-bottom: 10px;
     border: 1px solid #444;
 }}
-
-/* REGLA MAGICA PARA LAS FOTOS DE LOS BAKUGANS EN CELULAR */
 .producto-img {{
     width: 100%;
     border-radius: 8px;
     object-fit: contain;
-    max-height: 250px; /* Tamaño máximo en PC */
+    max-height: 250px; 
     margin-bottom: 10px;
 }}
-
 @media (max-width: 768px) {{
     .producto-img {{
-        max-height: 160px; /* Se hacen mucho más chaparritos en celular */
+        max-height: 160px; 
         width: auto;
         max-width: 100%;
         display: block;
@@ -121,26 +120,13 @@ if logo_b64:
 else:
     st.sidebar.markdown("### 🛒 Mi Tienda")
 
-st.sidebar.header("Filtros")
-
-tipo_busqueda = st.sidebar.selectbox("¿Qué buscas?", ["Bakugans 🔥", "Cartas 🃏", "BakuCores 🛑"])
-
-if tipo_busqueda == "Bakugans 🔥":
-    sub_filtro = st.sidebar.selectbox("Filtra por Atributo", categorias)
-elif tipo_busqueda == "Cartas 🃏":
-    sub_filtro = st.sidebar.selectbox("Filtra por Material", materiales)
-else:
-    sub_filtro = st.sidebar.selectbox("Filtra por Símbolo", simbolos_core)
-
 # 🚨 EL CANDADO INVISIBLE Y AUTENTICACIÓN 🚨
 es_admin_url = st.query_params.get("jefe") == "1"
 vista_admin = "Catálogo" 
 admin_autenticado = False
 
 if es_admin_url:
-    st.sidebar.markdown("---")
     admin_input = st.sidebar.text_input("🔑 Acceso Admin", type="password")
-    
     if admin_input == st.secrets["ADMIN_PASS"]:
         admin_autenticado = True
         st.sidebar.success("¡Bienvenido, jefe!")
@@ -153,6 +139,74 @@ if es_admin_url:
         ])
     elif admin_input != "":
         st.sidebar.error("Contraseña incorrecta.")
+    st.sidebar.markdown("---")
+
+# === UI DEL CARRITO EN EL MENÚ LATERAL (SOLO PÚBLICO) ===
+if not admin_autenticado or vista_admin == "Ver Catálogo":
+    
+    # Enlace de WhatsApp exitoso si acaban de apartar
+    if 'wa_link' in st.session_state:
+        st.sidebar.success("✅ ¡Apartado asegurado!")
+        st.sidebar.markdown(f"[**📲 HAZ CLIC AQUÍ PARA AVISARME POR WHATSAPP**]({st.session_state.wa_link})")
+        if st.sidebar.button("Cerrar Aviso"):
+            del st.session_state['wa_link']
+            st.rerun()
+            
+    st.sidebar.subheader(f"🛒 Mi Carrito ({len(st.session_state.carrito)})")
+    
+    if st.session_state.carrito:
+        total_carrito = 0
+        for i, item in enumerate(st.session_state.carrito):
+            col1, col2 = st.sidebar.columns([4, 1])
+            col1.markdown(f"<span style='font-size:0.9em;'>{item['nombre']} - **${item['precio']}**</span>", unsafe_allow_html=True)
+            if col2.button("❌", key=f"del_c_{i}_{item['_id']}"):
+                st.session_state.carrito.pop(i)
+                st.rerun()
+            total_carrito += item['precio']
+            
+        st.sidebar.markdown(f"### Total: ${total_carrito}")
+        
+        with st.sidebar.expander("✅ Proceder al Apartado"):
+            nom = st.text_input("Tu Nombre")
+            tel = st.text_input("Tu WhatsApp")
+            if st.button("Confirmar Todo mi Pedido"):
+                if nom and tel:
+                    # Guardamos todo en la base de datos de un jalón
+                    for prod in st.session_state.carrito:
+                        col_apartados.insert_one({
+                            "producto_id": prod["_id"],
+                            "nombre_producto": prod["nombre"],
+                            "precio": prod["precio"],
+                            "comprador_nombre": nom,
+                            "comprador_telefono": tel,
+                            "fecha_apartado": datetime.now()
+                        })
+                        col_productos.update_one({"_id": prod["_id"]}, {"$inc": {"stock": -1}})
+                    
+                    # Generamos el enlace de WhatsApp
+                    texto_wa = f"Hola, acabo de apartar {len(st.session_state.carrito)} piezas por un total de ${total_carrito}. Mi nombre es {nom}."
+                    st.session_state.wa_link = f"https://wa.me/4462879839?text={texto_wa.replace(' ', '%20')}"
+                    
+                    st.session_state.carrito = [] # Limpiamos carrito
+                    st.rerun()
+                else:
+                    st.sidebar.warning("Por favor, llena tu nombre y WhatsApp.")
+    else:
+        st.sidebar.info("El carrito está vacío. ¡Agrega algunos Bakugans!")
+        
+    st.sidebar.markdown("---")
+
+# Filtros Globales
+st.sidebar.header("Filtros")
+tipo_busqueda = st.sidebar.selectbox("¿Qué buscas?", ["Bakugans 🔥", "Cartas 🃏", "BakuCores 🛑"])
+
+if tipo_busqueda == "Bakugans 🔥":
+    sub_filtro = st.sidebar.selectbox("Filtra por Atributo", categorias)
+elif tipo_busqueda == "Cartas 🃏":
+    sub_filtro = st.sidebar.selectbox("Filtra por Material", materiales)
+else:
+    sub_filtro = st.sidebar.selectbox("Filtra por Símbolo", simbolos_core)
+
 
 # =====================================================================
 # ======================== PANTALLA PRINCIPAL =========================
@@ -163,12 +217,10 @@ if vista_admin == "📊 Finanzas y Ventas":
     st.markdown("Revisa el rendimiento de tu tienda. KPIs calculados al instante.")
     
     ventas = list(col_ventas.find({}))
-    
     if not ventas:
         st.info("Aún no tienes ventas registradas para analizar.")
     else:
         hoy = datetime.now()
-        
         def filtrar_por_fecha(dias):
             fecha_limite = hoy - timedelta(days=dias)
             return [v for v in ventas if v["fecha_venta"] >= fecha_limite]
@@ -185,7 +237,6 @@ if vista_admin == "📊 Finanzas y Ventas":
             return ingresos, gastos, ganancia
             
         tab1, tab2, tab3, tab4 = st.tabs(["Hoy", "Últimos 7 Días", "Últimos 30 Días", "Este Año"])
-        
         datos_tabs = [(tab1, ventas_hoy), (tab2, ventas_semana), (tab3, ventas_mes), (tab4, ventas_anio)]
         
         for tab, datos_rango in datos_tabs:
@@ -229,67 +280,46 @@ elif vista_admin == "🎨 Personalizar Página":
     with st.form("form_personalizacion"):
         nuevo_fondo = st.file_uploader("Fondo de Pantalla HD (Recomendado: Horizontal)", type=["png", "jpg", "jpeg"])
         nuevo_logo = st.file_uploader("Logo del Menú Lateral", type=["png", "jpg", "jpeg"])
-        
         if st.form_submit_button("Guardar Diseño"):
             update_data = {}
             if nuevo_fondo:
-                bytes_fondo = nuevo_fondo.getvalue()
-                update_data["fondo_b64"] = base64.b64encode(bytes_fondo).decode("utf-8")
+                update_data["fondo_b64"] = base64.b64encode(nuevo_fondo.getvalue()).decode("utf-8")
             if nuevo_logo:
-                bytes_logo = nuevo_logo.getvalue()
-                update_data["logo_b64"] = base64.b64encode(bytes_logo).decode("utf-8")
-                
+                update_data["logo_b64"] = base64.b64encode(nuevo_logo.getvalue()).decode("utf-8")
             if update_data:
                 col_config.update_one({"_id": "sitio_prefs"}, {"$set": update_data}, upsert=True)
-                st.success("¡Diseño actualizado! Recarga la página para ver los cambios.")
+                st.success("¡Diseño actualizado! Recarga la página.")
                 st.rerun()
 
 elif vista_admin == "➕ Agregar Producto":
     st.title("🛠️ Agregar nuevo producto al Catálogo")
     st.markdown("---")
-    
     tipo_prod = st.radio("Tipo de Producto", ["Bakugan", "Carta", "BakuCore"])
     nombre = st.text_input("Nombre / Descripción del Producto")
-    
     col1, col2, col3 = st.columns(3)
     with col1:
-        atributo_form = st.selectbox("Atributo (Bakugans)", categorias[1:], disabled=(tipo_prod != "Bakugan")) 
+        atributo_form = st.selectbox("Atributo", categorias[1:], disabled=(tipo_prod != "Bakugan")) 
     with col2:
-        material_form = st.selectbox("Material (Cartas)", materiales[1:], disabled=(tipo_prod != "Carta"))
+        material_form = st.selectbox("Material", materiales[1:], disabled=(tipo_prod != "Carta"))
     with col3:
-        simbolo_form = st.selectbox("Símbolo (BakuCores)", simbolos_core[1:], disabled=(tipo_prod != "BakuCore"))
-    
+        simbolo_form = st.selectbox("Símbolo", simbolos_core[1:], disabled=(tipo_prod != "BakuCore"))
     precio = st.number_input("Precio ($)", min_value=0.0, step=10.0)
     stock = st.number_input("Cantidad disponible", min_value=1, step=1)
-    
-    # NUEVO: Acepta múltiples imágenes
-    imagenes_subidas = st.file_uploader("Sube hasta 5 fotos (Frontal, trasera, detalles...)", type=["png", "jpg", "jpeg"], accept_multiple_files=True)
+    imagenes_subidas = st.file_uploader("Sube hasta 5 fotos (Frontal, trasera...)", type=["png", "jpg", "jpeg"], accept_multiple_files=True)
     
     if st.button("Subir Producto"):
         if nombre and imagenes_subidas and precio > 0:
             if len(imagenes_subidas) > 5:
-                st.warning("Has subido más de 5 fotos. Solo se guardarán las primeras 5 para optimizar tu base de datos.")
+                st.warning("Se guardarán solo las primeras 5 fotos.")
                 imagenes_subidas = imagenes_subidas[:5]
-                
-            lista_imagenes_b64 = []
-            for img in imagenes_subidas:
-                bytes_data = img.getvalue()
-                lista_imagenes_b64.append(base64.b64encode(bytes_data).decode("utf-8"))
-            
+            lista_imagenes_b64 = [base64.b64encode(img.getvalue()).decode("utf-8") for img in imagenes_subidas]
             nuevo_prod = {
-                "tipo": tipo_prod,
-                "nombre": nombre,
-                "precio": precio,
-                "stock": stock,
-                "imagenes_b64": lista_imagenes_b64 # Guardamos el array de fotos
+                "tipo": tipo_prod, "nombre": nombre, "precio": precio,
+                "stock": stock, "imagenes_b64": lista_imagenes_b64
             }
-            
-            if tipo_prod == "Bakugan":
-                nuevo_prod["atributo"] = atributo_form
-            elif tipo_prod == "Carta":
-                nuevo_prod["material"] = material_form
-            else:
-                nuevo_prod["simbolo"] = simbolo_form
+            if tipo_prod == "Bakugan": nuevo_prod["atributo"] = atributo_form
+            elif tipo_prod == "Carta": nuevo_prod["material"] = material_form
+            else: nuevo_prod["simbolo"] = simbolo_form
                 
             col_productos.insert_one(nuevo_prod)
             st.success(f"¡{nombre} subido con éxito!")
@@ -300,25 +330,20 @@ elif vista_admin == "➕ Agregar Producto":
 elif vista_admin == "📋 Ver Apartados":
     st.title("📋 Registro de Clientes y Apartados")
     st.markdown("---")
-    
     todos_los_apartados = list(col_apartados.find({}))
-    
     if not todos_los_apartados:
         st.info("No hay apartados activos en este momento.")
     else:
         clientes_dict = {}
         for ap in todos_los_apartados:
             tel = ap.get("comprador_telefono", "Sin número")
-            if tel not in clientes_dict:
-                clientes_dict[tel] = []
+            if tel not in clientes_dict: clientes_dict[tel] = []
             clientes_dict[tel].append(ap)
         
         for tel, items in clientes_dict.items():
             nombre_cliente = items[0].get("comprador_nombre", "Desconocido")
-            
             st.markdown(f'<div class="tarjeta-cliente">', unsafe_allow_html=True)
             st.markdown(f"#### 👤 {nombre_cliente} | 📞 WA: {tel}")
-            
             total_cliente = 0
             nombres_items = []
             for item in items:
@@ -329,32 +354,22 @@ elif vista_admin == "📋 Ver Apartados":
                 st.write(f"- **{item['nombre_producto']}** (${precio_item}) _[Apartado: {fecha_str}]_")
             
             st.markdown(f"**Total piezas a cobrar:** <span style='color:#2ecc71; font-size:1.2em;'>${total_cliente}</span>", unsafe_allow_html=True)
-            
             col_conf, col_canc = st.columns(2)
-            
             with col_conf:
                 with st.expander("✅ Confirmar Pago"):
                     cobro_envio = st.number_input("Dinero extra cliente (Envío) $", min_value=0.0, step=10.0, key=f"cobro_{tel}")
                     gastos = st.number_input("Costo de la guía (Paquetería) $", min_value=0.0, step=10.0, key=f"gasto_{tel}")
                     obs = st.text_input("Observaciones", key=f"obs_{tel}")
-                    
                     if st.button("Procesar Venta", key=f"btn_venta_{tel}"):
                         col_ventas.insert_one({
-                            "cliente": nombre_cliente,
-                            "telefono": tel,
-                            "productos": nombres_items,
-                            "precio_productos": total_cliente,
-                            "ingreso_envio": cobro_envio,
-                            "precio_total": total_cliente + cobro_envio,
-                            "gasto_envio": gastos,
-                            "observaciones": obs,
-                            "fecha_venta": datetime.now()
+                            "cliente": nombre_cliente, "telefono": tel, "productos": nombres_items,
+                            "precio_productos": total_cliente, "ingreso_envio": cobro_envio,
+                            "precio_total": total_cliente + cobro_envio, "gasto_envio": gastos,
+                            "observaciones": obs, "fecha_venta": datetime.now()
                         })
-                        for item in items:
-                            col_apartados.delete_one({"_id": item["_id"]})
+                        for item in items: col_apartados.delete_one({"_id": item["_id"]})
                         st.success("¡Venta registrada!")
                         st.rerun()
-
             with col_canc:
                 with st.expander("🚫 Cancelar Pedido"):
                     if st.button("Confirmar Cancelación", key=f"btn_cancel_{tel}"):
@@ -363,7 +378,6 @@ elif vista_admin == "📋 Ver Apartados":
                             col_apartados.delete_one({"_id": item["_id"]})
                         st.success("¡Pedido cancelado y stock devuelto!")
                         st.rerun()
-                        
             st.markdown("</div>", unsafe_allow_html=True)
 
 else:
@@ -374,29 +388,33 @@ else:
         st.title("🛠️ Administrar Catálogo e Inventario")
     else:
         st.title("🔥 Catálogo Libre")
+        
+    # --- EL NUEVO BUSCADOR EN VIVO ---
+    busqueda_texto = st.text_input("🔍 Buscar pieza por nombre...", placeholder="Ej. Dragonoid, Pyrus, Ultra...")
     st.markdown("---")
 
     query = {}
     if not es_modo_admin_catalogo:
         query["stock"] = {"$gt": 0}
 
+    if busqueda_texto:
+        # Busca cualquier coincidencia en el nombre, sin importar mayúsculas
+        query["nombre"] = {"$regex": busqueda_texto, "$options": "i"}
+
     if tipo_busqueda == "Bakugans 🔥":
         query["$or"] = [{"tipo": "Bakugan"}, {"tipo": {"$exists": False}}]
-        if sub_filtro != "Todos":
-            query["atributo"] = sub_filtro
+        if sub_filtro != "Todos": query["atributo"] = sub_filtro
     elif tipo_busqueda == "Cartas 🃏":
         query["tipo"] = "Carta"
-        if sub_filtro != "Todas":
-            query["material"] = sub_filtro
+        if sub_filtro != "Todas": query["material"] = sub_filtro
     else: 
         query["tipo"] = "BakuCore"
-        if sub_filtro != "Todos":
-            query["simbolo"] = sub_filtro
+        if sub_filtro != "Todos": query["simbolo"] = sub_filtro
 
     productos = list(col_productos.find(query))
 
     if not productos:
-        st.info("No hay inventario disponible con estos filtros por el momento.")
+        st.info("No encontramos ninguna pieza con esos filtros o nombre.")
     else:
         cols = st.columns(3)
         for index, prod in enumerate(productos):
@@ -404,34 +422,29 @@ else:
             with col:
                 st.markdown(f"### {prod['nombre']}")
                 
-                # --- NUEVA LÓGICA DE GALERÍA DE IMÁGENES ---
-                # Recuperamos el arreglo nuevo, o el viejo si es un producto antiguo
                 imagenes_del_producto = prod.get("imagenes_b64", [])
                 if not imagenes_del_producto and "imagen_b64" in prod:
                     imagenes_del_producto = [prod["imagen_b64"]]
                 
                 if imagenes_del_producto:
                     if len(imagenes_del_producto) == 1:
-                        # Si solo tiene 1 foto, se muestra directa con nuestra clase HTML
                         st.markdown(f'<img src="data:image/png;base64,{imagenes_del_producto[0]}" class="producto-img">', unsafe_allow_html=True)
                     else:
-                        # Si tiene varias, creamos un sistema de pestañas (tabs)
                         pestanas = st.tabs([f"📸 {i+1}" for i in range(len(imagenes_del_producto))])
                         for i, pestana in enumerate(pestanas):
                             with pestana:
                                 st.markdown(f'<img src="data:image/png;base64,{imagenes_del_producto[i]}" class="producto-img">', unsafe_allow_html=True)
                 
-                # ---------------------------------------------
-                
                 precio_mostrar = prod.get('precio', 0.0)
                 stock_actual = prod.get('stock', 0)
                 
-                if tipo_busqueda == "Bakugans 🔥":
-                    st.write(f"**Atributo:** {prod.get('atributo', 'N/A')}")
-                elif tipo_busqueda == "Cartas 🃏":
-                    st.write(f"**Material:** {prod.get('material', 'N/A')}")
-                else:
-                    st.write(f"**Símbolo:** {prod.get('simbolo', 'N/A')}")
+                # Calcular cuántos de este modelo exacto ya metió al carrito
+                en_carrito = sum(1 for item in st.session_state.carrito if item["_id"] == prod["_id"])
+                stock_disponible_real = stock_actual - en_carrito
+                
+                if tipo_busqueda == "Bakugans 🔥": st.write(f"**Atributo:** {prod.get('atributo', 'N/A')}")
+                elif tipo_busqueda == "Cartas 🃏": st.write(f"**Material:** {prod.get('material', 'N/A')}")
+                else: st.write(f"**Símbolo:** {prod.get('simbolo', 'N/A')}")
                 
                 if stock_actual == 0:
                     st.markdown("🚨 **ESTADO:** <span style='color:#e74c3c; font-weight:bold;'>AGOTADO (0)</span>", unsafe_allow_html=True)
@@ -440,34 +453,20 @@ else:
                     
                 st.write(f"**Precio:** ${precio_mostrar}")
                 
+                # === BOTÓN DE CARRITO (SOLO PÚBLICO) ===
                 if stock_actual > 0 and not es_modo_admin_catalogo:
-                    with st.expander("🛒 Apartar pieza"):
-                        if st.session_state.get(f"apartado_{prod['_id']}", False):
-                            st.success("✅ ¡Tu apartado está asegurado!")
-                            link_wa = f"https://wa.me/4462879839?text=Hola,%20acabo%20de%20apartar%20{prod['nombre']}%20por%20${precio_mostrar}"
-                            st.markdown(f"[**📲 HAZ CLIC AQUÍ PARA ENVIARME WHATSAPP**]({link_wa})")
-                        else:
-                            st.write(f"**Total a pagar:** ${precio_mostrar}")
-                            
-                            nom = st.text_input("Tu Nombre", key=f"n_{prod['_id']}")
-                            tel = st.text_input("Tu WhatsApp", key=f"t_{prod['_id']}")
-                            
-                            if st.button("Confirmar Apartado", key=f"btn_{prod['_id']}"):
-                                if nom and tel:
-                                    col_apartados.insert_one({
-                                        "producto_id": prod["_id"],
-                                        "nombre_producto": prod["nombre"],
-                                        "precio": precio_mostrar,
-                                        "comprador_nombre": nom,
-                                        "comprador_telefono": tel,
-                                        "fecha_apartado": datetime.now()
-                                    })
-                                    col_productos.update_one({"_id": prod["_id"]}, {"$inc": {"stock": -1}})
-                                    st.session_state[f"apartado_{prod['_id']}"] = True
-                                    st.rerun() 
-                                else:
-                                    st.warning("Escribe tu nombre y teléfono para apartarlo.")
+                    if stock_disponible_real > 0:
+                        if st.button("🛒 Añadir al carrito", key=f"add_{prod['_id']}", use_container_width=True):
+                            st.session_state.carrito.append({
+                                "_id": prod["_id"],
+                                "nombre": prod["nombre"],
+                                "precio": precio_mostrar
+                            })
+                            st.rerun()
+                    else:
+                        st.button("✅ En el carrito (Máx)", disabled=True, key=f"max_{prod['_id']}", use_container_width=True)
 
+                # === BOTONES DE ADMIN ===
                 if es_modo_admin_catalogo:
                     st.markdown("---")
                     c_stock, c_del = st.columns(2)
