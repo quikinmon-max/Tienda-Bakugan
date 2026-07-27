@@ -22,7 +22,7 @@ db = client["bakugan_market"]
 col_productos = db["productos"]
 col_apartados = db["apartados"]
 col_config = db["configuracion"] 
-col_ventas = db["ventas"] # NUEVA COLECCIÓN: Para las estadísticas
+col_ventas = db["ventas"] # Para las estadísticas financieras
 
 # ---------------- CARGAR DISEÑO PERSONALIZADO ----------------
 config_data = col_config.find_one({"_id": "sitio_prefs"})
@@ -100,6 +100,7 @@ else:
     sub_filtro = st.sidebar.selectbox("Filtra por Símbolo", simbolos_core)
 
 # 🚨 EL CANDADO INVISIBLE 🚨
+# La cajita de admin SOLO aparece si la URL termina en ?jefe=1
 es_admin_url = st.query_params.get("jefe") == "1"
 vista_admin = "Catálogo" 
 
@@ -144,9 +145,9 @@ if vista_admin == "📊 Finanzas y Ventas":
         ventas_anio = filtrar_por_fecha(365)
         
         def calcular_metricas(lista_ventas):
-            ingresos = sum(v.get("precio_total", 0) for v in lista_ventas)
-            gastos = sum(v.get("gasto_envio", 0) for v in lista_ventas)
-            ganancia = ingresos - gastos
+            ingresos = sum(v.get("precio_total", 0) for v in lista_ventas) # Suma piezas + cobro extra de envío
+            gastos = sum(v.get("gasto_envio", 0) for v in lista_ventas)    # Suma lo que te costó la guía
+            ganancia = ingresos - gastos                                   # Tu ganancia real neta
             return ingresos, gastos, ganancia
             
         tab1, tab2, tab3, tab4 = st.tabs(["Hoy", "Últimos 7 Días", "Últimos 30 Días", "Este Año"])
@@ -159,13 +160,13 @@ if vista_admin == "📊 Finanzas y Ventas":
                 col1, col2, col3, col4 = st.columns(4)
                 col1.metric("📦 Piezas Vendidas", len(datos_rango))
                 col2.metric("💸 Ingresos Brutos", f"${ing:,.2f}")
-                col3.metric("📉 Gastos (Envíos/Otros)", f"${gas:,.2f}")
+                col3.metric("📉 Gastos (Guías)", f"${gas:,.2f}")
                 col4.metric("💰 Ganancia Neta", f"${gan:,.2f}")
                 
         st.markdown("---")
         st.subheader("📝 Historial Detallado de Ventas")
         for v in reversed(ventas):
-            st.markdown(f"**{v['fecha_venta'].strftime('%d/%m/%Y')}** | Cliente: {v['cliente']} | Ingreso: ${v['precio_total']} | Gasto: ${v['gasto_envio']} | _Observación: {v.get('observaciones', 'Ninguna')}_")
+            st.markdown(f"**{v['fecha_venta'].strftime('%d/%m/%Y')}** | Cliente: {v['cliente']} | Neta: **${(v.get('precio_total', 0) - v.get('gasto_envio', 0))}** | _Cobro Envío: ${v.get('ingreso_envio', 0)}_ | _Costo Guía: ${v.get('gasto_envio', 0)}_ | Obs: {v.get('observaciones', 'Ninguna')}")
 
 elif vista_admin == "🎨 Personalizar Página":
     st.title("🎨 Personaliza el Diseño de tu Tienda")
@@ -269,10 +270,15 @@ elif vista_admin == "📋 Ver Apartados":
                 nombres_items.append(item['nombre_producto'])
                 st.write(f"- **{item['nombre_producto']}** (${precio_item}) _[Apartado: {fecha_str}]_")
             
-            st.markdown(f"**Total a cobrar:** <span style='color:#2ecc71; font-size:1.2em;'>${total_cliente}</span>", unsafe_allow_html=True)
+            st.markdown(f"**Total piezas a cobrar:** <span style='color:#2ecc71; font-size:1.2em;'>${total_cliente}</span>", unsafe_allow_html=True)
             
             with st.expander("✅ Confirmar Pago de este cliente"):
-                gastos = st.number_input("Costo de Envío / Gastos extra ($)", min_value=0.0, step=10.0, key=f"gasto_{tel}")
+                st.write(f"Costo de las piezas: **${total_cliente}**")
+                
+                # Campos separados para el cálculo financiero exacto
+                cobro_envio = st.number_input("Dinero extra que te depositó el cliente (Para el envío) $", min_value=0.0, step=10.0, key=f"cobro_{tel}")
+                gastos = st.number_input("Costo de la guía (Lo que tú le pagaste a la paquetería) $", min_value=0.0, step=10.0, key=f"gasto_{tel}")
+                
                 obs = st.text_input("Observaciones (Ej. Envío por DHL, guía #123)", key=f"obs_{tel}")
                 
                 if st.button("Procesar Venta", key=f"btn_venta_{tel}"):
@@ -280,7 +286,9 @@ elif vista_admin == "📋 Ver Apartados":
                         "cliente": nombre_cliente,
                         "telefono": tel,
                         "productos": nombres_items,
-                        "precio_total": total_cliente,
+                        "precio_productos": total_cliente,
+                        "ingreso_envio": cobro_envio,
+                        "precio_total": total_cliente + cobro_envio, # El ingreso bruto total
                         "gasto_envio": gastos,
                         "observaciones": obs,
                         "fecha_venta": datetime.now()
@@ -288,7 +296,7 @@ elif vista_admin == "📋 Ver Apartados":
                     for item in items:
                         col_apartados.delete_one({"_id": item["_id"]})
                         
-                    st.success("¡Venta registrada! Revisa tu panel de Finanzas.")
+                    st.success("¡Venta registrada con contabilidad exacta! Revisa tu panel de Finanzas.")
                     st.rerun()
             st.markdown("</div>", unsafe_allow_html=True)
 
@@ -339,7 +347,7 @@ else:
                 with st.expander("🛒 Apartar pieza"):
                     if st.session_state.get(f"apartado_{prod['_id']}", False):
                         st.success("✅ ¡Tu apartado está asegurado!")
-                        # TU NÚMERO DE WHATSAPP INTEGRADO AQUÍ
+                        # TU NÚMERO DE WHATSAPP
                         link_wa = f"https://wa.me/4462879839?text=Hola,%20acabo%20de%20apartar%20{prod['nombre']}%20por%20${precio_mostrar}"
                         st.markdown(f"[**📲 HAZ CLIC AQUÍ PARA ENVIARME WHATSAPP**]({link_wa})")
                     else:
