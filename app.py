@@ -185,7 +185,29 @@ if vista_admin == "📊 Finanzas y Ventas":
         st.markdown("---")
         st.subheader("📝 Historial Detallado de Ventas")
         for v in reversed(ventas):
-            st.markdown(f"**{v['fecha_venta'].strftime('%d/%m/%Y')}** | Cliente: {v['cliente']} | Neta: **${(v.get('precio_total', 0) - v.get('gasto_envio', 0))}** | _Cobro Envío: ${v.get('ingreso_envio', 0)}_ | _Costo Guía: ${v.get('gasto_envio', 0)}_ | Obs: {v.get('observaciones', 'Ninguna')}")
+            # Calculamos las variables limpias para las tarjetas HTML
+            neta = v.get('precio_total', 0) - v.get('gasto_envio', 0)
+            cobro_envio = v.get('ingreso_envio', 0)
+            gasto_envio = v.get('gasto_envio', 0)
+            fecha_str = v['fecha_venta'].strftime('%d/%m/%Y')
+            obs = v.get('observaciones', 'Ninguna')
+            
+            tarjeta_venta = f"""
+            <div style="background-color: rgba(255, 255, 255, 0.05); padding: 12px; border-radius: 8px; margin-bottom: 10px; border-left: 5px solid #2ecc71; border-top: 1px solid rgba(255,255,255,0.1); border-right: 1px solid rgba(255,255,255,0.1); border-bottom: 1px solid rgba(255,255,255,0.1);">
+                <div style="font-size: 14px; margin-bottom: 5px;">
+                    <span style="color: #aaa;">📅 {fecha_str}</span> &nbsp;|&nbsp; 👤 <b>{v['cliente']}</b>
+                </div>
+                <div style="font-size: 15px; margin-bottom: 5px;">
+                    💰 <b>Ganancia Neta: <span style="color: #2ecc71;">${neta:,.2f}</span></b> &nbsp;|&nbsp; 
+                    📦 Cobro Envío: <span style="color: #f1c40f;">${cobro_envio:,.2f}</span> &nbsp;|&nbsp; 
+                    📉 Costo Guía: <span style="color: #e74c3c;">${gasto_envio:,.2f}</span>
+                </div>
+                <div style="font-size: 13px; color: #ccc;">
+                    📝 <i>Obs: {obs}</i>
+                </div>
+            </div>
+            """
+            st.markdown(tarjeta_venta, unsafe_allow_html=True)
 
 elif vista_admin == "🎨 Personalizar Página":
     st.title("🎨 Personaliza el Diseño de tu Tienda")
@@ -330,25 +352,32 @@ elif vista_admin == "📋 Ver Apartados":
             st.markdown("</div>", unsafe_allow_html=True)
 
 else:
-    # --- VISTA DEL CATÁLOGO PÚBLICO / ADMIN ---
-    if admin_autenticado and vista_admin == "Ver Catálogo":
-        st.title("🛠️ Administrar Catálogo")
-        st.markdown("Aquí puedes ver tu tienda tal cual la ven los clientes, pero con el superpoder de **eliminar** artículos permanentemente.")
+    # --- VISTA DEL CATÁLOGO PÚBLICO Y ADMIN (GESTIÓN COMPLETA) ---
+    es_modo_admin_catalogo = admin_autenticado and vista_admin == "Ver Catálogo"
+    
+    if es_modo_admin_catalogo:
+        st.title("🛠️ Administrar Catálogo e Inventario")
+        st.markdown("Aquí ves TODOS tus productos (incluso los agotados). Puedes reabastecerlos o eliminarlos para siempre.")
     else:
         st.title("🔥 Catálogo Libre")
         st.markdown("Selecciona tus piezas. **OJO:** Tienes 3 días para concretar o se pierden los apartados.")
     st.markdown("---")
 
+    # Lógica de búsqueda: El Admin ve todo (incluso stock 0), los clientes solo ven stock > 0
+    query = {}
+    if not es_modo_admin_catalogo:
+        query["stock"] = {"$gt": 0}
+
     if tipo_busqueda == "Bakugans 🔥":
-        query = {"stock": {"$gt": 0}, "$or": [{"tipo": "Bakugan"}, {"tipo": {"$exists": False}}]}
+        query["$or"] = [{"tipo": "Bakugan"}, {"tipo": {"$exists": False}}]
         if sub_filtro != "Todos":
             query["atributo"] = sub_filtro
     elif tipo_busqueda == "Cartas 🃏":
-        query = {"stock": {"$gt": 0}, "tipo": "Carta"}
+        query["tipo"] = "Carta"
         if sub_filtro != "Todas":
             query["material"] = sub_filtro
     else: 
-        query = {"stock": {"$gt": 0}, "tipo": "BakuCore"}
+        query["tipo"] = "BakuCore"
         if sub_filtro != "Todos":
             query["simbolo"] = sub_filtro
 
@@ -366,6 +395,7 @@ else:
                     st.image(base64.b64decode(prod["imagen_b64"]), use_container_width=True)
                 
                 precio_mostrar = prod.get('precio', 0.0)
+                stock_actual = prod.get('stock', 0)
                 
                 if tipo_busqueda == "Bakugans 🔥":
                     st.write(f"**Atributo:** {prod.get('atributo', 'N/A')}")
@@ -373,42 +403,62 @@ else:
                     st.write(f"**Material:** {prod.get('material', 'N/A')}")
                 else:
                     st.write(f"**Símbolo:** {prod.get('simbolo', 'N/A')}")
+                
+                # Etiqueta de stock visualmente diferente si es 0 (solo lo ve el admin)
+                if stock_actual == 0:
+                    st.markdown("🚨 **ESTADO:** <span style='color:#e74c3c; font-weight:bold;'>AGOTADO (0)</span>", unsafe_allow_html=True)
+                else:
+                    st.write(f"**Disponibles:** {stock_actual}")
                     
-                st.write(f"**Disponibles:** {prod['stock']}")
                 st.write(f"**Precio:** ${precio_mostrar}")
                 
-                with st.expander("🛒 Apartar pieza"):
-                    if st.session_state.get(f"apartado_{prod['_id']}", False):
-                        st.success("✅ ¡Tu apartado está asegurado!")
-                        link_wa = f"https://wa.me/4462879839?text=Hola,%20acabo%20de%20apartar%20{prod['nombre']}%20por%20${precio_mostrar}"
-                        st.markdown(f"[**📲 HAZ CLIC AQUÍ PARA ENVIARME WHATSAPP**]({link_wa})")
-                    else:
-                        st.write(f"**Total a pagar:** ${precio_mostrar}")
-                        st.caption("🚨 *Nota: El costo de envío es aparte.*")
-                        
-                        nom = st.text_input("Tu Nombre", key=f"n_{prod['_id']}")
-                        tel = st.text_input("Tu WhatsApp", key=f"t_{prod['_id']}")
-                        
-                        if st.button("Confirmar Apartado", key=f"btn_{prod['_id']}"):
-                            if nom and tel:
-                                col_apartados.insert_one({
-                                    "producto_id": prod["_id"],
-                                    "nombre_producto": prod["nombre"],
-                                    "precio": precio_mostrar,
-                                    "comprador_nombre": nom,
-                                    "comprador_telefono": tel,
-                                    "fecha_apartado": datetime.now()
-                                })
-                                col_productos.update_one({"_id": prod["_id"]}, {"$inc": {"stock": -1}})
-                                st.session_state[f"apartado_{prod['_id']}"] = True
-                                st.rerun() 
-                            else:
-                                st.warning("Escribe tu nombre y teléfono para apartarlo.")
+                # === VISTA CLIENTE NORMAL (Apartar) ===
+                if stock_actual > 0 and not es_modo_admin_catalogo:
+                    with st.expander("🛒 Apartar pieza"):
+                        if st.session_state.get(f"apartado_{prod['_id']}", False):
+                            st.success("✅ ¡Tu apartado está asegurado!")
+                            link_wa = f"https://wa.me/4462879839?text=Hola,%20acabo%20de%20apartar%20{prod['nombre']}%20por%20${precio_mostrar}"
+                            st.markdown(f"[**📲 HAZ CLIC AQUÍ PARA ENVIARME WHATSAPP**]({link_wa})")
+                        else:
+                            st.write(f"**Total a pagar:** ${precio_mostrar}")
+                            st.caption("🚨 *Nota: El costo de envío es aparte.*")
+                            
+                            nom = st.text_input("Tu Nombre", key=f"n_{prod['_id']}")
+                            tel = st.text_input("Tu WhatsApp", key=f"t_{prod['_id']}")
+                            
+                            if st.button("Confirmar Apartado", key=f"btn_{prod['_id']}"):
+                                if nom and tel:
+                                    col_apartados.insert_one({
+                                        "producto_id": prod["_id"],
+                                        "nombre_producto": prod["nombre"],
+                                        "precio": precio_mostrar,
+                                        "comprador_nombre": nom,
+                                        "comprador_telefono": tel,
+                                        "fecha_apartado": datetime.now()
+                                    })
+                                    col_productos.update_one({"_id": prod["_id"]}, {"$inc": {"stock": -1}})
+                                    st.session_state[f"apartado_{prod['_id']}"] = True
+                                    st.rerun() 
+                                else:
+                                    st.warning("Escribe tu nombre y teléfono para apartarlo.")
 
-                # === BOTÓN DE ELIMINAR (SOLO PARA ADMIN) ===
-                if admin_autenticado and vista_admin == "Ver Catálogo":
+                # === BOTONES DE ADMIN (Solo visibles si estás como admin) ===
+                if es_modo_admin_catalogo:
                     st.markdown("---")
-                    if st.button("🗑️ Eliminar Producto", key=f"del_{prod['_id']}"):
-                        col_productos.delete_one({"_id": prod["_id"]})
-                        st.success("Producto eliminado del catálogo.")
-                        st.rerun()
+                    st.markdown("⚙️ **Acciones de Admin**")
+                    
+                    c_stock, c_del = st.columns(2)
+                    with c_stock:
+                        add_stk = st.number_input("Sumar piezas", min_value=1, step=1, key=f"add_{prod['_id']}")
+                        if st.button("➕ Stock", key=f"btn_stk_{prod['_id']}", use_container_width=True):
+                            col_productos.update_one({"_id": prod["_id"]}, {"$inc": {"stock": add_stk}})
+                            st.success("Stock actualizado.")
+                            st.rerun()
+                            
+                    with c_del:
+                        st.write("") # Espaciador para alinear con el input
+                        st.write("")
+                        if st.button("🗑️ Eliminar", key=f"del_{prod['_id']}", use_container_width=True):
+                            col_productos.delete_one({"_id": prod["_id"]})
+                            st.success("Producto eliminado.")
+                            st.rerun()
