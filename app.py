@@ -77,7 +77,7 @@ limpiar_apartados_vencidos()
 categorias = ["Todos", "Pyrus 🔥", "Aquos 💧", "Ventus 🍃", "Darkus 🌑", "Haos ✨", "Subterra 🪨"]
 materiales = ["Todas", "Metálica", "Cartón"]
 # NUEVO: Símbolos para los BakuCores
-simbolos_core = ["Todos", "Fist (Puño) ✊", "Flaming Fist (Puño en llamas) 🔥✊", "Shield (Escudo) 🛡️", "Magic Shield (Escudo mágico) ✨🛡️", "Helix (Hélice) 🧬"]
+simbolos_core = ["Todos", "Fist ✊", "Flaming Fist 🔥✊", "Shield 🛡️", "Magic Shield ✨🛡️", "Helix 🧬"]
 
 # =====================================================================
 # =========================== MENÚ LATERAL ============================
