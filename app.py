@@ -7,12 +7,13 @@ from bson.objectid import ObjectId
 # ---------------- CONFIGURACIÓN DE PÁGINA ----------------
 st.set_page_config(page_title="Bakugan Market", page_icon="🔥", layout="wide")
 
-# ---------------- CONEXIÓN A MONGODB ----------------
-# Se usa st.cache_resource para no abrir múltiples conexiones cada vez que das un clic
+# ---------------- CONEXIÓN A MONGODB (SEGURO PARA GITHUB) ----------------
+# Se usa st.cache_resource para no abrir múltiples conexiones
 @st.cache_resource
 def init_connection():
-    # Reemplaza esto con tu cadena de conexión real de MongoDB Atlas
-    MONGO_URI = "mongodb+srv://quikinmon_db_user:<Emiliano1569>@nailcontrol-db.zv2srcr.mongodb.net/?appName=NailControl-Db" 
+    # En lugar de tener el texto aquí, Streamlit jalará la conexión de forma segura
+    # desde la configuración de "Secrets" en la nube
+    MONGO_URI = st.secrets["MONGO_URI"] 
     client = pymongo.MongoClient(MONGO_URI)
     return client
 
@@ -105,7 +106,7 @@ else:
             # Decodificar y mostrar imagen
             if "imagen_b64" in bkg:
                 imagen_bytes = base64.b64decode(bkg["imagen_b64"])
-                st.image(imagen_bytes, use_column_width=True)
+                st.image(imagen_bytes, use_container_width=True)
             
             st.write(f"**Atributo:** {bkg['atributo']}")
             st.write(f"**Disponibles:** {bkg['stock']}")
