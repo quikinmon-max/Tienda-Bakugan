@@ -22,6 +22,7 @@ db = client["bakugan_market"]
 col_productos = db["productos"]
 col_apartados = db["apartados"]
 col_config = db["configuracion"] 
+col_ventas = db["ventas"] # NUEVA COLECCIÓN: Para las estadísticas
 
 # ---------------- CARGAR DISEÑO PERSONALIZADO ----------------
 config_data = col_config.find_one({"_id": "sitio_prefs"})
@@ -76,7 +77,6 @@ limpiar_apartados_vencidos()
 # ---------------- VARIABLES GLOBALES ----------------
 categorias = ["Todos", "Pyrus 🔥", "Aquos 💧", "Ventus 🍃", "Darkus 🌑", "Haos ✨", "Subterra 🪨"]
 materiales = ["Todas", "Metálica", "Cartón"]
-# NUEVO: Símbolos para los BakuCores
 simbolos_core = ["Todos", "Fist ✊", "Flaming Fist 🔥✊", "Shield 🛡️", "Magic Shield ✨🛡️", "Helix 🧬"]
 
 # =====================================================================
@@ -86,11 +86,10 @@ simbolos_core = ["Todos", "Fist ✊", "Flaming Fist 🔥✊", "Shield 🛡️", 
 if logo_b64:
     st.sidebar.image(f"data:image/png;base64,{logo_b64}", use_container_width=True)
 else:
-    st.sidebar.markdown("### 🛒 Mi Tienda (Sube tu logo en Admin)")
+    st.sidebar.markdown("### 🛒 Mi Tienda")
 
 st.sidebar.header("Filtros")
 
-# NUEVO: Agregamos BakuCores a la búsqueda principal
 tipo_busqueda = st.sidebar.selectbox("¿Qué buscas?", ["Bakugans 🔥", "Cartas 🃏", "BakuCores 🛑"])
 
 if tipo_busqueda == "Bakugans 🔥":
@@ -100,22 +99,75 @@ elif tipo_busqueda == "Cartas 🃏":
 else:
     sub_filtro = st.sidebar.selectbox("Filtra por Símbolo", simbolos_core)
 
-st.sidebar.markdown("---")
-admin_input = st.sidebar.text_input("🔑 Acceso Admin", type="password")
-
+# 🚨 EL CANDADO INVISIBLE 🚨
+es_admin_url = st.query_params.get("jefe") == "1"
 vista_admin = "Catálogo" 
 
-if admin_input == st.secrets["ADMIN_PASS"]:
-    st.sidebar.success("¡Bienvenido, jefe!")
-    vista_admin = st.sidebar.radio("Opciones de Administrador", ["Ver Catálogo", "➕ Agregar Producto", "📋 Ver Apartados", "🎨 Personalizar Página"])
-elif admin_input != "":
-    st.sidebar.error("Contraseña incorrecta.")
+if es_admin_url:
+    st.sidebar.markdown("---")
+    admin_input = st.sidebar.text_input("🔑 Acceso Admin", type="password")
+    
+    if admin_input == st.secrets["ADMIN_PASS"]:
+        st.sidebar.success("¡Bienvenido, jefe!")
+        vista_admin = st.sidebar.radio("Opciones de Administrador", [
+            "Ver Catálogo", 
+            "➕ Agregar Producto", 
+            "📋 Ver Apartados", 
+            "📊 Finanzas y Ventas", 
+            "🎨 Personalizar Página"
+        ])
+    elif admin_input != "":
+        st.sidebar.error("Contraseña incorrecta.")
 
 # =====================================================================
 # ======================== PANTALLA PRINCIPAL =========================
 # =====================================================================
 
-if vista_admin == "🎨 Personalizar Página":
+if vista_admin == "📊 Finanzas y Ventas":
+    st.title("📊 Panel de Analítica Financiera")
+    st.markdown("Revisa el rendimiento de tu tienda. KPIs calculados al instante.")
+    
+    ventas = list(col_ventas.find({}))
+    
+    if not ventas:
+        st.info("Aún no tienes ventas registradas para analizar.")
+    else:
+        hoy = datetime.now()
+        
+        def filtrar_por_fecha(dias):
+            fecha_limite = hoy - timedelta(days=dias)
+            return [v for v in ventas if v["fecha_venta"] >= fecha_limite]
+            
+        ventas_hoy = [v for v in ventas if v["fecha_venta"].date() == hoy.date()]
+        ventas_semana = filtrar_por_fecha(7)
+        ventas_mes = filtrar_por_fecha(30)
+        ventas_anio = filtrar_por_fecha(365)
+        
+        def calcular_metricas(lista_ventas):
+            ingresos = sum(v.get("precio_total", 0) for v in lista_ventas)
+            gastos = sum(v.get("gasto_envio", 0) for v in lista_ventas)
+            ganancia = ingresos - gastos
+            return ingresos, gastos, ganancia
+            
+        tab1, tab2, tab3, tab4 = st.tabs(["Hoy", "Últimos 7 Días", "Últimos 30 Días", "Este Año"])
+        
+        datos_tabs = [(tab1, ventas_hoy), (tab2, ventas_semana), (tab3, ventas_mes), (tab4, ventas_anio)]
+        
+        for tab, datos_rango in datos_tabs:
+            with tab:
+                ing, gas, gan = calcular_metricas(datos_rango)
+                col1, col2, col3, col4 = st.columns(4)
+                col1.metric("📦 Piezas Vendidas", len(datos_rango))
+                col2.metric("💸 Ingresos Brutos", f"${ing:,.2f}")
+                col3.metric("📉 Gastos (Envíos/Otros)", f"${gas:,.2f}")
+                col4.metric("💰 Ganancia Neta", f"${gan:,.2f}")
+                
+        st.markdown("---")
+        st.subheader("📝 Historial Detallado de Ventas")
+        for v in reversed(ventas):
+            st.markdown(f"**{v['fecha_venta'].strftime('%d/%m/%Y')}** | Cliente: {v['cliente']} | Ingreso: ${v['precio_total']} | Gasto: ${v['gasto_envio']} | _Observación: {v.get('observaciones', 'Ninguna')}_")
+
+elif vista_admin == "🎨 Personalizar Página":
     st.title("🎨 Personaliza el Diseño de tu Tienda")
     st.markdown("Sube las imágenes directo desde tu computadora para cambiar el fondo y el logo de la página. Se guardarán en tu base de datos.")
     st.markdown("---")
@@ -144,30 +196,16 @@ elif vista_admin == "➕ Agregar Producto":
     st.title("🛠️ Agregar nuevo producto al Catálogo")
     st.markdown("---")
     
-    # NUEVO: Se agrega la opción BakuCore
     tipo_prod = st.radio("Tipo de Producto", ["Bakugan", "Carta", "BakuCore"])
     nombre = st.text_input("Nombre / Descripción del Producto")
     
-    # Ahora usamos 3 columnas para que los filtros se acomoden bien
     col1, col2, col3 = st.columns(3)
     with col1:
-        atributo_form = st.selectbox(
-            "Atributo (Bakugans)", 
-            categorias[1:], 
-            disabled=(tipo_prod != "Bakugan") 
-        ) 
+        atributo_form = st.selectbox("Atributo (Bakugans)", categorias[1:], disabled=(tipo_prod != "Bakugan")) 
     with col2:
-        material_form = st.selectbox(
-            "Material (Cartas)", 
-            materiales[1:], 
-            disabled=(tipo_prod != "Carta") 
-        )
+        material_form = st.selectbox("Material (Cartas)", materiales[1:], disabled=(tipo_prod != "Carta"))
     with col3:
-        simbolo_form = st.selectbox(
-            "Símbolo (BakuCores)", 
-            simbolos_core[1:], 
-            disabled=(tipo_prod != "BakuCore") 
-        )
+        simbolo_form = st.selectbox("Símbolo (BakuCores)", simbolos_core[1:], disabled=(tipo_prod != "BakuCore"))
     
     precio = st.number_input("Precio ($)", min_value=0.0, step=10.0)
     stock = st.number_input("Cantidad disponible", min_value=1, step=1)
@@ -186,7 +224,6 @@ elif vista_admin == "➕ Agregar Producto":
                 "imagen_b64": base64_str
             }
             
-            # Guardar la característica correcta según el tipo
             if tipo_prod == "Bakugan":
                 nuevo_prod["atributo"] = atributo_form
             elif tipo_prod == "Carta":
@@ -202,7 +239,7 @@ elif vista_admin == "➕ Agregar Producto":
 
 elif vista_admin == "📋 Ver Apartados":
     st.title("📋 Registro de Clientes y Apartados")
-    st.markdown("Aquí verás qué piezas tiene apartadas cada persona y cuánto te deben en total.")
+    st.markdown("Confirma pagos para que pasen a tus métricas de ventas y libera inventario.")
     st.markdown("---")
     
     todos_los_apartados = list(col_apartados.find({}))
@@ -224,14 +261,35 @@ elif vista_admin == "📋 Ver Apartados":
             st.markdown(f"#### 👤 {nombre_cliente} | 📞 WA: {tel}")
             
             total_cliente = 0
+            nombres_items = []
             for item in items:
                 fecha_str = item["fecha_apartado"].strftime("%d/%m %H:%M")
                 precio_item = item.get("precio", 0.0)
                 total_cliente += precio_item
-                
+                nombres_items.append(item['nombre_producto'])
                 st.write(f"- **{item['nombre_producto']}** (${precio_item}) _[Apartado: {fecha_str}]_")
             
-            st.markdown(f"**Total acumulado:** <span style='color:#2ecc71; font-size:1.2em;'>${total_cliente}</span>", unsafe_allow_html=True)
+            st.markdown(f"**Total a cobrar:** <span style='color:#2ecc71; font-size:1.2em;'>${total_cliente}</span>", unsafe_allow_html=True)
+            
+            with st.expander("✅ Confirmar Pago de este cliente"):
+                gastos = st.number_input("Costo de Envío / Gastos extra ($)", min_value=0.0, step=10.0, key=f"gasto_{tel}")
+                obs = st.text_input("Observaciones (Ej. Envío por DHL, guía #123)", key=f"obs_{tel}")
+                
+                if st.button("Procesar Venta", key=f"btn_venta_{tel}"):
+                    col_ventas.insert_one({
+                        "cliente": nombre_cliente,
+                        "telefono": tel,
+                        "productos": nombres_items,
+                        "precio_total": total_cliente,
+                        "gasto_envio": gastos,
+                        "observaciones": obs,
+                        "fecha_venta": datetime.now()
+                    })
+                    for item in items:
+                        col_apartados.delete_one({"_id": item["_id"]})
+                        
+                    st.success("¡Venta registrada! Revisa tu panel de Finanzas.")
+                    st.rerun()
             st.markdown("</div>", unsafe_allow_html=True)
 
 else:
@@ -240,7 +298,6 @@ else:
     st.markdown("Selecciona tus piezas. **OJO:** Tienes 3 días para concretar o se pierden los apartados.")
     st.markdown("---")
 
-    # NUEVO: Lógica de búsqueda adaptada para los 3 tipos de productos
     if tipo_busqueda == "Bakugans 🔥":
         query = {"stock": {"$gt": 0}, "$or": [{"tipo": "Bakugan"}, {"tipo": {"$exists": False}}]}
         if sub_filtro != "Todos":
@@ -249,7 +306,7 @@ else:
         query = {"stock": {"$gt": 0}, "tipo": "Carta"}
         if sub_filtro != "Todas":
             query["material"] = sub_filtro
-    else: # BakuCores
+    else: 
         query = {"stock": {"$gt": 0}, "tipo": "BakuCore"}
         if sub_filtro != "Todos":
             query["simbolo"] = sub_filtro
@@ -269,7 +326,6 @@ else:
                 
                 precio_mostrar = prod.get('precio', 0.0)
                 
-                # Mostrar la característica correcta dependiendo del tipo de producto
                 if tipo_busqueda == "Bakugans 🔥":
                     st.write(f"**Atributo:** {prod.get('atributo', 'N/A')}")
                 elif tipo_busqueda == "Cartas 🃏":
@@ -283,7 +339,7 @@ else:
                 with st.expander("🛒 Apartar pieza"):
                     if st.session_state.get(f"apartado_{prod['_id']}", False):
                         st.success("✅ ¡Tu apartado está asegurado!")
-                        # CAMBIA ESTE NÚMERO POR TU CELULAR
+                        # TU NÚMERO DE WHATSAPP INTEGRADO AQUÍ
                         link_wa = f"https://wa.me/4462879839?text=Hola,%20acabo%20de%20apartar%20{prod['nombre']}%20por%20${precio_mostrar}"
                         st.markdown(f"[**📲 HAZ CLIC AQUÍ PARA ENVIARME WHATSAPP**]({link_wa})")
                     else:
