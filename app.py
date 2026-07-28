@@ -2,7 +2,7 @@ import streamlit as st
 import pymongo
 import base64
 from datetime import datetime, timedelta
-from PIL import Image
+from PIL import Image, ImageOps
 import io
 
 # ---------------- CONFIGURACIÓN DE PÁGINA ----------------
@@ -32,15 +32,16 @@ col_ventas = db["ventas"]
 
 # ---------------- MOTOR DE COMPRESIÓN DE IMÁGENES ----------------
 def comprimir_imagen(img_file):
-    """Redimensiona y comprime la imagen antes de subirla para no reventar Mongo"""
+    """Redimensiona, arregla la rotación y comprime la imagen"""
     img = Image.open(img_file)
-    # Convertir a RGB por si es un PNG con transparencia
+    # ESTO ARREGLA LAS FOTOS ACOSTADAS (Lee los datos EXIF del celular y la endereza)
+    img = ImageOps.exif_transpose(img)
+    
     if img.mode in ("RGBA", "P"):
         img = img.convert("RGB")
-    # Redimensionar (Máximo 800x800 px, mantiene la proporción)
+    
     img.thumbnail((800, 800))
     buffer = io.BytesIO()
-    # Guardar en memoria como JPEG con calidad al 70%
     img.save(buffer, format="JPEG", quality=70)
     return base64.b64encode(buffer.getvalue()).decode("utf-8")
 
@@ -85,14 +86,37 @@ css_global = f"""
     margin-bottom: 10px;
 }}
 
+/* ESTILOS DEL NUEVO CARRUSEL DESLIZABLE */
+.galeria-container {{
+    display: flex;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    gap: 0px;
+    border-radius: 8px;
+    margin-bottom: 5px;
+    -ms-overflow-style: none;  /* Oculta scrollbar en IE y Edge */
+    scrollbar-width: none;  /* Oculta scrollbar en Firefox */
+}}
+.galeria-container::-webkit-scrollbar {{
+    display: none; /* Oculta scrollbar en Chrome y Safari */
+}}
+.galeria-img {{
+    scroll-snap-align: center;
+    flex: 0 0 100%;
+    width: 100%;
+    object-fit: contain;
+    max-height: 250px;
+    border-radius: 8px;
+}}
+
 /* AJUSTES RESPONSIVOS PARA MÓVILES Y iPHONE */
 @media (max-width: 768px) {{
     .block-container {{
         padding-top: 3rem !important; 
         margin-top: 0rem;
     }}
-    .producto-img {{
-        max-height: 160px; 
+    .producto-img, .galeria-img {{
+        max-height: 180px; 
         width: auto;
         max-width: 100%;
         display: block;
@@ -276,7 +300,6 @@ elif vista_admin == "🎨 Personalizar Página":
         if st.form_submit_button("Guardar Diseño"):
             update_data = {}
             if nuevo_fondo:
-                # El fondo lo dejamos como b64 directo porque suele ser 1 sola imagen
                 update_data["fondo_b64"] = base64.b64encode(nuevo_fondo.getvalue()).decode("utf-8")
             if nuevo_logo:
                 update_data["logo_b64"] = base64.b64encode(nuevo_logo.getvalue()).decode("utf-8")
@@ -313,7 +336,6 @@ elif vista_admin == "➕ Agregar Producto":
                 st.warning("Se guardarán solo las primeras 6 fotos.")
                 imagenes_subidas = imagenes_subidas[:6]
                 
-            # AQUÍ APLICAMOS LA COMPRESIÓN A CADA IMAGEN ANTES DE SUBIRLA
             lista_imagenes_b64 = [comprimir_imagen(img) for img in imagenes_subidas]
             
             nuevo_prod = {
@@ -491,14 +513,19 @@ else:
                 if not imagenes_del_producto and "imagen_b64" in prod:
                     imagenes_del_producto = [prod["imagen_b64"]]
                 
+                # ------ NUEVO SISTEMA DE GALERÍA DESLIZABLE (CARRUSEL) ------
                 if imagenes_del_producto:
                     if len(imagenes_del_producto) == 1:
-                        st.markdown(f'<img src="data:image/png;base64,{imagenes_del_producto[0]}" class="producto-img">', unsafe_allow_html=True)
+                        st.markdown(f'<img src="data:image/jpeg;base64,{imagenes_del_producto[0]}" class="producto-img">', unsafe_allow_html=True)
                     else:
-                        pestanas = st.tabs([f"📸 {i+1}" for i in range(len(imagenes_del_producto))])
-                        for i, pestana in enumerate(pestanas):
-                            with pestana:
-                                st.markdown(f'<img src="data:image/png;base64,{imagenes_del_producto[i]}" class="producto-img">', unsafe_allow_html=True)
+                        # Generamos el bloque HTML para deslizar las fotos
+                        html_galeria = '<div class="galeria-container">'
+                        for b64_img in imagenes_del_producto:
+                            html_galeria += f'<img src="data:image/jpeg;base64,{b64_img}" class="galeria-img">'
+                        html_galeria += '</div>'
+                        
+                        st.markdown(html_galeria, unsafe_allow_html=True)
+                        st.markdown("<p style='text-align: center; color: #888; font-size: 13px; margin-top: -3px;'>👉 Desliza para ver más fotos</p>", unsafe_allow_html=True)
                 
                 precio_mostrar = prod.get('precio', 0.0)
                 stock_actual = prod.get('stock', 0)
