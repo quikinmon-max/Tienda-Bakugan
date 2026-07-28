@@ -27,7 +27,6 @@ col_productos = db["productos"]
 col_apartados = db["apartados"]
 col_config = db["configuracion"] 
 col_ventas = db["ventas"] 
-col_incompletos = db["incompletos"] # NUEVA BASE DE DATOS PARA REFACCIONES
 
 # ---------------- CARGAR DISEÑO PERSONALIZADO (FONDO Y CSS) ----------------
 config_data = col_config.find_one({"_id": "sitio_prefs"})
@@ -153,7 +152,6 @@ if es_admin_url:
         vista_admin = st.sidebar.radio("Opciones de Administrador", [
             "Ver Catálogo", 
             "➕ Agregar Producto", 
-            "🔧 Piezas e Incompletos",
             "📋 Ver Apartados", 
             "📊 Finanzas y Ventas", 
             "🎨 Personalizar Página"
@@ -162,17 +160,18 @@ if es_admin_url:
         st.sidebar.error("Contraseña incorrecta.")
     st.sidebar.markdown("---")
 
-# Filtros Globales 
+# Filtros Globales (¡Agregamos la opción de piezas con detalles!)
 st.sidebar.header("Filtros Avanzados")
-tipo_busqueda = st.sidebar.selectbox("¿Qué buscas?", ["Bakugans 🔥", "Cartas 🃏", "BakuCores 🛑"])
+tipo_busqueda = st.sidebar.selectbox("¿Qué buscas?", ["Bakugans 🔥", "Cartas 🃏", "BakuCores 🛑", "Piezas / Detalles 🛠️"])
 
 if tipo_busqueda == "Bakugans 🔥":
     sub_filtro = st.sidebar.selectbox("Filtra por Atributo", categorias)
 elif tipo_busqueda == "Cartas 🃏":
     sub_filtro = st.sidebar.selectbox("Filtra por Material", materiales)
-else:
+elif tipo_busqueda == "BakuCores 🛑":
     sub_filtro = st.sidebar.selectbox("Filtra por Símbolo", simbolos_core)
-
+else:
+    sub_filtro = "Todos" # No necesitamos subfiltro si están buscando piezas sueltas/dañadas
 
 # =====================================================================
 # ======================== PANTALLA PRINCIPAL =========================
@@ -261,7 +260,12 @@ elif vista_admin == "➕ Agregar Producto":
     st.title("🛠️ Agregar nuevo producto al Catálogo")
     st.markdown("---")
     tipo_prod = st.radio("Tipo de Producto", ["Bakugan", "Carta", "BakuCore"])
-    nombre = st.text_input("Nombre / Descripción del Producto")
+    nombre = st.text_input("Nombre / Descripción principal")
+    
+    # NUEVO CAMPO DE DETALLE
+    detalle_prod = st.text_input("⚠️ Detalles o desperfectos (Opcional, déjalo vacío si está perfecto)")
+    st.caption("*Si escribes algo aquí, el producto se moverá a la pestaña de 'Piezas / Detalles 🛠️' automáticamente.*")
+    
     col1, col2, col3 = st.columns(3)
     with col1:
         atributo_form = st.selectbox("Atributo", categorias[1:], disabled=(tipo_prod != "Bakugan")) 
@@ -269,6 +273,7 @@ elif vista_admin == "➕ Agregar Producto":
         material_form = st.selectbox("Material", materiales[1:], disabled=(tipo_prod != "Carta"))
     with col3:
         simbolo_form = st.selectbox("Símbolo", simbolos_core[1:], disabled=(tipo_prod != "BakuCore"))
+        
     precio = st.number_input("Precio ($)", min_value=0.0, step=10.0)
     stock = st.number_input("Cantidad disponible", min_value=1, step=1)
     imagenes_subidas = st.file_uploader("Sube hasta 5 fotos (Frontal, trasera...)", type=["png", "jpg", "jpeg"], accept_multiple_files=True)
@@ -279,87 +284,25 @@ elif vista_admin == "➕ Agregar Producto":
                 st.warning("Se guardarán solo las primeras 5 fotos.")
                 imagenes_subidas = imagenes_subidas[:5]
             lista_imagenes_b64 = [base64.b64encode(img.getvalue()).decode("utf-8") for img in imagenes_subidas]
+            
             nuevo_prod = {
                 "tipo": tipo_prod, "nombre": nombre, "precio": precio,
                 "stock": stock, "imagenes_b64": lista_imagenes_b64
             }
+            
+            # Guardamos el detalle si el usuario lo escribió
+            if detalle_prod.strip():
+                nuevo_prod["detalle"] = detalle_prod.strip()
+                
             if tipo_prod == "Bakugan": nuevo_prod["atributo"] = atributo_form
             elif tipo_prod == "Carta": nuevo_prod["material"] = material_form
             else: nuevo_prod["simbolo"] = simbolo_form
                 
             col_productos.insert_one(nuevo_prod)
-            st.success(f"¡{nombre} subido con éxito al catálogo público!")
+            st.success(f"¡{nombre} subido con éxito!")
             st.rerun() 
         else:
             st.error("Falta el nombre, al menos 1 imagen o el precio.")
-
-# --- NUEVA SECCIÓN DE INCOMPLETOS / PIEZAS ---
-elif vista_admin == "🔧 Piezas e Incompletos":
-    st.title("🔧 Inventario de Piezas y Detalles")
-    st.markdown("Administra aquí los Bakugans incompletos, rotos o que usas de refacción. **Nada de esto será visible para tus clientes.**")
-    st.markdown("---")
-    
-    tab_reg, tab_ver = st.tabs(["➕ Registrar Incompleto/Pieza", "📦 Ver mi Inventario Oculto"])
-    
-    with tab_reg:
-        nombre_inc = st.text_input("Nombre de la pieza o Bakugan")
-        detalles_inc = st.text_area("Describe el detalle (Ej. Le falta el cuerno izquierdo, el resorte no sirve...)")
-        
-        c1, c2 = st.columns(2)
-        with c1:
-            stock_inc = st.number_input("Cantidad de estas piezas", min_value=1, step=1, key="stock_inc")
-        with c2:
-            precio_inc = st.number_input("Precio estimado ($) (Opcional)", min_value=0.0, step=10.0, key="precio_inc")
-            
-        imagenes_inc = st.file_uploader("Sube fotos mostrando los detalles/daños", type=["png", "jpg", "jpeg"], accept_multiple_files=True, key="imgs_inc")
-        
-        if st.button("Guardar en Inventario Oculto", type="primary"):
-            if nombre_inc and imagenes_inc:
-                lista_imgs_inc = [base64.b64encode(img.getvalue()).decode("utf-8") for img in imagenes_inc[:5]]
-                col_incompletos.insert_one({
-                    "nombre": nombre_inc,
-                    "detalles": detalles_inc,
-                    "stock": stock_inc,
-                    "precio": precio_inc,
-                    "imagenes_b64": lista_imgs_inc,
-                    "fecha_registro": datetime.now()
-                })
-                st.success("¡Pieza registrada en el deshuesadero!")
-                st.rerun()
-            else:
-                st.error("Necesitas ponerle un nombre y subir al menos 1 foto.")
-                
-    with tab_ver:
-        incompletos = list(col_incompletos.find({}))
-        if not incompletos:
-            st.info("Tu inventario de piezas y detalles está vacío.")
-        else:
-            cols_inc = st.columns(3)
-            for i, pieza in enumerate(incompletos):
-                col = cols_inc[i % 3]
-                with col:
-                    st.markdown(f"#### {pieza['nombre']}")
-                    
-                    if pieza.get("imagenes_b64"):
-                        st.markdown(f'<img src="data:image/png;base64,{pieza["imagenes_b64"][0]}" class="producto-img">', unsafe_allow_html=True)
-                        
-                    st.markdown(f"**⚠️ Detalles:** {pieza.get('detalles', 'Sin descripción')}")
-                    st.write(f"**Disponibles:** {pieza.get('stock', 0)}")
-                    if pieza.get('precio', 0) > 0:
-                        st.write(f"**Valor est:** ${pieza['precio']}")
-                        
-                    c_sum, c_del = st.columns(2)
-                    with c_sum:
-                        st.write("")
-                        if st.button("➕ Stock", key=f"add_inc_{pieza['_id']}", use_container_width=True):
-                            col_incompletos.update_one({"_id": pieza["_id"]}, {"$inc": {"stock": 1}})
-                            st.rerun()
-                    with c_del:
-                        st.write("")
-                        if st.button("🗑️ Borrar", key=f"del_inc_{pieza['_id']}", use_container_width=True):
-                            col_incompletos.delete_one({"_id": pieza["_id"]})
-                            st.rerun()
-                    st.markdown("---")
 
 elif vista_admin == "📋 Ver Apartados":
     st.title("📋 Registro de Clientes y Apartados")
@@ -488,20 +431,27 @@ else:
     if busqueda_texto:
         query["nombre"] = {"$regex": busqueda_texto, "$options": "i"}
 
+    # --- LÓGICA DE FILTROS ACTUALIZADA (Separa piezas con y sin detalles) ---
     if tipo_busqueda == "Bakugans 🔥":
         query["$or"] = [{"tipo": "Bakugan"}, {"tipo": {"$exists": False}}]
+        query["detalle"] = {"$in": [None, ""]} # Excluye los que tienen detalles
         if sub_filtro != "Todos": query["atributo"] = sub_filtro
     elif tipo_busqueda == "Cartas 🃏":
         query["tipo"] = "Carta"
+        query["detalle"] = {"$in": [None, ""]} # Excluye los que tienen detalles
         if sub_filtro != "Todas": query["material"] = sub_filtro
-    else: 
+    elif tipo_busqueda == "BakuCores 🛑": 
         query["tipo"] = "BakuCore"
+        query["detalle"] = {"$in": [None, ""]} # Excluye los que tienen detalles
         if sub_filtro != "Todos": query["simbolo"] = sub_filtro
+    elif tipo_busqueda == "Piezas / Detalles 🛠️":
+        # Muestra CUALQUIER producto (bakugan, carta, core) que TENGAN un detalle escrito
+        query["detalle"] = {"$nin": [None, ""]}
 
     productos = list(col_productos.find(query))
 
     if not productos:
-        st.info("No encontramos ninguna pieza con esos filtros o nombre.")
+        st.info("No encontramos ninguna pieza con estos filtros.")
     else:
         cols = st.columns(3)
         for index, prod in enumerate(productos):
@@ -530,7 +480,11 @@ else:
                 
                 if tipo_busqueda == "Bakugans 🔥": st.write(f"**Atributo:** {prod.get('atributo', 'N/A')}")
                 elif tipo_busqueda == "Cartas 🃏": st.write(f"**Material:** {prod.get('material', 'N/A')}")
-                else: st.write(f"**Símbolo:** {prod.get('simbolo', 'N/A')}")
+                elif tipo_busqueda == "BakuCores 🛑": st.write(f"**Símbolo:** {prod.get('simbolo', 'N/A')}")
+                
+                # MOSTRAR EL AVISO DEL DETALLE SI LO TIENE
+                if "detalle" in prod and prod["detalle"]:
+                    st.warning(f"⚠️ **Detalle:** {prod['detalle']}")
                 
                 if stock_actual == 0:
                     st.markdown("🚨 **ESTADO:** <span style='color:#e74c3c; font-weight:bold;'>AGOTADO (0)</span>", unsafe_allow_html=True)
