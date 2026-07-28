@@ -2,6 +2,8 @@ import streamlit as st
 import pymongo
 import base64
 from datetime import datetime, timedelta
+from PIL import Image
+import io
 
 # ---------------- CONFIGURACIÓN DE PÁGINA ----------------
 st.set_page_config(
@@ -27,6 +29,20 @@ col_productos = db["productos"]
 col_apartados = db["apartados"]
 col_config = db["configuracion"] 
 col_ventas = db["ventas"] 
+
+# ---------------- MOTOR DE COMPRESIÓN DE IMÁGENES ----------------
+def comprimir_imagen(img_file):
+    """Redimensiona y comprime la imagen antes de subirla para no reventar Mongo"""
+    img = Image.open(img_file)
+    # Convertir a RGB por si es un PNG con transparencia
+    if img.mode in ("RGBA", "P"):
+        img = img.convert("RGB")
+    # Redimensionar (Máximo 800x800 px, mantiene la proporción)
+    img.thumbnail((800, 800))
+    buffer = io.BytesIO()
+    # Guardar en memoria como JPEG con calidad al 70%
+    img.save(buffer, format="JPEG", quality=70)
+    return base64.b64encode(buffer.getvalue()).decode("utf-8")
 
 # ---------------- CARGAR DISEÑO PERSONALIZADO (FONDO Y CSS) ----------------
 config_data = col_config.find_one({"_id": "sitio_prefs"})
@@ -260,6 +276,7 @@ elif vista_admin == "🎨 Personalizar Página":
         if st.form_submit_button("Guardar Diseño"):
             update_data = {}
             if nuevo_fondo:
+                # El fondo lo dejamos como b64 directo porque suele ser 1 sola imagen
                 update_data["fondo_b64"] = base64.b64encode(nuevo_fondo.getvalue()).decode("utf-8")
             if nuevo_logo:
                 update_data["logo_b64"] = base64.b64encode(nuevo_logo.getvalue()).decode("utf-8")
@@ -288,15 +305,16 @@ elif vista_admin == "➕ Agregar Producto":
     precio = st.number_input("Precio ($)", min_value=0.0, step=10.0)
     stock = st.number_input("Cantidad disponible", min_value=1, step=1)
     
-    # AHORA PIDE HASTA 6 FOTOS
     imagenes_subidas = st.file_uploader("Sube hasta 6 fotos (Frontal, trasera...)", type=["png", "jpg", "jpeg"], accept_multiple_files=True)
     
     if st.button("Subir Producto al Catálogo"):
         if nombre and imagenes_subidas and precio > 0:
-            if len(imagenes_subidas) > 6: # VALIDA 6 FOTOS MÁXIMO
+            if len(imagenes_subidas) > 6:
                 st.warning("Se guardarán solo las primeras 6 fotos.")
                 imagenes_subidas = imagenes_subidas[:6]
-            lista_imagenes_b64 = [base64.b64encode(img.getvalue()).decode("utf-8") for img in imagenes_subidas]
+                
+            # AQUÍ APLICAMOS LA COMPRESIÓN A CADA IMAGEN ANTES DE SUBIRLA
+            lista_imagenes_b64 = [comprimir_imagen(img) for img in imagenes_subidas]
             
             nuevo_prod = {
                 "tipo": tipo_prod, "nombre": nombre, "precio": precio,
