@@ -32,9 +32,8 @@ col_ventas = db["ventas"]
 
 # ---------------- MOTOR DE COMPRESIÓN DE IMÁGENES ----------------
 def comprimir_imagen(img_file):
-    """Redimensiona, arregla la rotación y comprime la imagen"""
     img = Image.open(img_file)
-    # ESTO ARREGLA LAS FOTOS ACOSTADAS (Lee los datos EXIF del celular y la endereza)
+    # Endereza la foto si viene rotada del celular
     img = ImageOps.exif_transpose(img)
     
     if img.mode in ("RGBA", "P"):
@@ -78,35 +77,31 @@ css_global = f"""
     margin-bottom: 10px;
     border: 1px solid #444;
 }}
-.producto-img {{
-    width: 100%;
-    border-radius: 8px;
-    object-fit: contain;
-    max-height: 250px; 
-    margin-bottom: 10px;
-}}
 
-/* ESTILOS DEL NUEVO CARRUSEL DESLIZABLE */
+/* =========================================================
+   DISEÑO DE GALERÍA: LIMPIO, CUADRADO Y DESLIZABLE
+   ========================================================= */
 .galeria-container {{
     display: flex;
     overflow-x: auto;
     scroll-snap-type: x mandatory;
-    gap: 0px;
+    gap: 0;
+    -ms-overflow-style: none;  
+    scrollbar-width: none;  
     border-radius: 8px;
     margin-bottom: 5px;
-    -ms-overflow-style: none;  /* Oculta scrollbar en IE y Edge */
-    scrollbar-width: none;  /* Oculta scrollbar en Firefox */
 }}
 .galeria-container::-webkit-scrollbar {{
-    display: none; /* Oculta scrollbar en Chrome y Safari */
+    display: none; 
 }}
 .galeria-img {{
     scroll-snap-align: center;
     flex: 0 0 100%;
     width: 100%;
-    object-fit: contain;
-    max-height: 250px;
+    aspect-ratio: 1 / 1 !important; /* Cuadrado perfecto */
+    object-fit: cover !important; /* MAGIA AQUÍ: Rellena TODO el cuadrado estilo Instagram */
     border-radius: 8px;
+    background-color: transparent; 
 }}
 
 /* AJUSTES RESPONSIVOS PARA MÓVILES Y iPHONE */
@@ -115,26 +110,15 @@ css_global = f"""
         padding-top: 3rem !important; 
         margin-top: 0rem;
     }}
-    .producto-img, .galeria-img {{
-        max-height: 180px; 
-        width: auto;
-        max-width: 100%;
-        display: block;
-        margin-left: auto;
-        margin-right: auto;
-    }}
-    
     .stTextInput input {{
         font-size: 16px !important;
         padding: 0.6rem !important;
     }}
-    
     .stButton > button {{
         font-size: 16px !important;
         padding: 0.5rem 1rem !important;
         min-height: 2.8rem !important;
     }}
-    
     div[data-testid="stPopover"] > button {{
         font-size: 16px !important;
         padding: 0.6rem 1rem !important;
@@ -513,19 +497,17 @@ else:
                 if not imagenes_del_producto and "imagen_b64" in prod:
                     imagenes_del_producto = [prod["imagen_b64"]]
                 
-                # ------ NUEVO SISTEMA DE GALERÍA DESLIZABLE (CARRUSEL) ------
+                # ------ GALERÍA TRANSPARENTE ------
                 if imagenes_del_producto:
-                    if len(imagenes_del_producto) == 1:
-                        st.markdown(f'<img src="data:image/jpeg;base64,{imagenes_del_producto[0]}" class="producto-img">', unsafe_allow_html=True)
-                    else:
-                        # Generamos el bloque HTML para deslizar las fotos
-                        html_galeria = '<div class="galeria-container">'
-                        for b64_img in imagenes_del_producto:
-                            html_galeria += f'<img src="data:image/jpeg;base64,{b64_img}" class="galeria-img">'
-                        html_galeria += '</div>'
-                        
-                        st.markdown(html_galeria, unsafe_allow_html=True)
-                        st.markdown("<p style='text-align: center; color: #888; font-size: 13px; margin-top: -3px;'>👉 Desliza para ver más fotos</p>", unsafe_allow_html=True)
+                    html_galeria = '<div class="galeria-container">'
+                    for b64_img in imagenes_del_producto:
+                        html_galeria += f'<img src="data:image/jpeg;base64,{b64_img}" class="galeria-img">'
+                    html_galeria += '</div>'
+                    
+                    st.markdown(html_galeria, unsafe_allow_html=True)
+                    
+                    if len(imagenes_del_producto) > 1:
+                        st.markdown("<p style='text-align: center; color: #aaa; font-size: 13px; margin-top: -5px;'>👉 Desliza la foto</p>", unsafe_allow_html=True)
                 
                 precio_mostrar = prod.get('precio', 0.0)
                 stock_actual = prod.get('stock', 0)
