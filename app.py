@@ -47,7 +47,11 @@ css_global = f"""
 }}
 .block-container {{
     background-color: rgba(14, 17, 23, 0.85); 
-    padding: 2rem;
+    padding-top: 5rem !important; /* <--- ESPACIO EXTRA ARRIBA PARA QUE NO SE PEGUE */
+    padding-right: 2rem;
+    padding-bottom: 2rem;
+    padding-left: 2rem;
+    margin-top: 2rem; /* <--- EMPUJÓN EXTRA HACIA ABAJO */
     border-radius: 15px;
 }}
 .tarjeta-cliente {{
@@ -67,6 +71,10 @@ css_global = f"""
 
 /* AJUSTES RESPONSIVOS PARA MÓVILES Y iPHONE */
 @media (max-width: 768px) {{
+    .block-container {{
+        padding-top: 3rem !important; /* En celular no necesitamos tanto espacio arriba */
+        margin-top: 0rem;
+    }}
     .producto-img {{
         max-height: 160px; 
         width: auto;
