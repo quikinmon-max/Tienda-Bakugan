@@ -27,13 +27,13 @@ col_productos = db["productos"]
 col_apartados = db["apartados"]
 col_config = db["configuracion"] 
 col_ventas = db["ventas"] 
+col_incompletos = db["incompletos"] # NUEVA BASE DE DATOS PARA REFACCIONES
 
 # ---------------- CARGAR DISEÑO PERSONALIZADO (FONDO Y CSS) ----------------
 config_data = col_config.find_one({"_id": "sitio_prefs"})
 fondo_b64 = config_data.get("fondo_b64") if config_data else None
 logo_b64 = config_data.get("logo_b64") if config_data else None
 
-# === AQUÍ INYECTAMOS LAS MEJORAS PARA iPHONE ===
 css_global = f"""
 <style>
 .stApp {{
@@ -77,20 +77,17 @@ css_global = f"""
         margin-right: auto;
     }}
     
-    /* Agrandar barra de búsqueda para que iOS no haga zoom automático (16px) */
     .stTextInput input {{
         font-size: 16px !important;
         padding: 0.6rem !important;
     }}
     
-    /* Agrandar botones generales (Añadir al carrito) */
     .stButton > button {{
         font-size: 16px !important;
         padding: 0.5rem 1rem !important;
         min-height: 2.8rem !important;
     }}
     
-    /* Agrandar botón del Popover (El Carrito Superior) */
     div[data-testid="stPopover"] > button {{
         font-size: 16px !important;
         padding: 0.6rem 1rem !important;
@@ -156,6 +153,7 @@ if es_admin_url:
         vista_admin = st.sidebar.radio("Opciones de Administrador", [
             "Ver Catálogo", 
             "➕ Agregar Producto", 
+            "🔧 Piezas e Incompletos",
             "📋 Ver Apartados", 
             "📊 Finanzas y Ventas", 
             "🎨 Personalizar Página"
@@ -275,7 +273,7 @@ elif vista_admin == "➕ Agregar Producto":
     stock = st.number_input("Cantidad disponible", min_value=1, step=1)
     imagenes_subidas = st.file_uploader("Sube hasta 5 fotos (Frontal, trasera...)", type=["png", "jpg", "jpeg"], accept_multiple_files=True)
     
-    if st.button("Subir Producto"):
+    if st.button("Subir Producto al Catálogo"):
         if nombre and imagenes_subidas and precio > 0:
             if len(imagenes_subidas) > 5:
                 st.warning("Se guardarán solo las primeras 5 fotos.")
@@ -290,10 +288,78 @@ elif vista_admin == "➕ Agregar Producto":
             else: nuevo_prod["simbolo"] = simbolo_form
                 
             col_productos.insert_one(nuevo_prod)
-            st.success(f"¡{nombre} subido con éxito!")
+            st.success(f"¡{nombre} subido con éxito al catálogo público!")
             st.rerun() 
         else:
             st.error("Falta el nombre, al menos 1 imagen o el precio.")
+
+# --- NUEVA SECCIÓN DE INCOMPLETOS / PIEZAS ---
+elif vista_admin == "🔧 Piezas e Incompletos":
+    st.title("🔧 Inventario de Piezas y Detalles")
+    st.markdown("Administra aquí los Bakugans incompletos, rotos o que usas de refacción. **Nada de esto será visible para tus clientes.**")
+    st.markdown("---")
+    
+    tab_reg, tab_ver = st.tabs(["➕ Registrar Incompleto/Pieza", "📦 Ver mi Inventario Oculto"])
+    
+    with tab_reg:
+        nombre_inc = st.text_input("Nombre de la pieza o Bakugan")
+        detalles_inc = st.text_area("Describe el detalle (Ej. Le falta el cuerno izquierdo, el resorte no sirve...)")
+        
+        c1, c2 = st.columns(2)
+        with c1:
+            stock_inc = st.number_input("Cantidad de estas piezas", min_value=1, step=1, key="stock_inc")
+        with c2:
+            precio_inc = st.number_input("Precio estimado ($) (Opcional)", min_value=0.0, step=10.0, key="precio_inc")
+            
+        imagenes_inc = st.file_uploader("Sube fotos mostrando los detalles/daños", type=["png", "jpg", "jpeg"], accept_multiple_files=True, key="imgs_inc")
+        
+        if st.button("Guardar en Inventario Oculto", type="primary"):
+            if nombre_inc and imagenes_inc:
+                lista_imgs_inc = [base64.b64encode(img.getvalue()).decode("utf-8") for img in imagenes_inc[:5]]
+                col_incompletos.insert_one({
+                    "nombre": nombre_inc,
+                    "detalles": detalles_inc,
+                    "stock": stock_inc,
+                    "precio": precio_inc,
+                    "imagenes_b64": lista_imgs_inc,
+                    "fecha_registro": datetime.now()
+                })
+                st.success("¡Pieza registrada en el deshuesadero!")
+                st.rerun()
+            else:
+                st.error("Necesitas ponerle un nombre y subir al menos 1 foto.")
+                
+    with tab_ver:
+        incompletos = list(col_incompletos.find({}))
+        if not incompletos:
+            st.info("Tu inventario de piezas y detalles está vacío.")
+        else:
+            cols_inc = st.columns(3)
+            for i, pieza in enumerate(incompletos):
+                col = cols_inc[i % 3]
+                with col:
+                    st.markdown(f"#### {pieza['nombre']}")
+                    
+                    if pieza.get("imagenes_b64"):
+                        st.markdown(f'<img src="data:image/png;base64,{pieza["imagenes_b64"][0]}" class="producto-img">', unsafe_allow_html=True)
+                        
+                    st.markdown(f"**⚠️ Detalles:** {pieza.get('detalles', 'Sin descripción')}")
+                    st.write(f"**Disponibles:** {pieza.get('stock', 0)}")
+                    if pieza.get('precio', 0) > 0:
+                        st.write(f"**Valor est:** ${pieza['precio']}")
+                        
+                    c_sum, c_del = st.columns(2)
+                    with c_sum:
+                        st.write("")
+                        if st.button("➕ Stock", key=f"add_inc_{pieza['_id']}", use_container_width=True):
+                            col_incompletos.update_one({"_id": pieza["_id"]}, {"$inc": {"stock": 1}})
+                            st.rerun()
+                    with c_del:
+                        st.write("")
+                        if st.button("🗑️ Borrar", key=f"del_inc_{pieza['_id']}", use_container_width=True):
+                            col_incompletos.delete_one({"_id": pieza["_id"]})
+                            st.rerun()
+                    st.markdown("---")
 
 elif vista_admin == "📋 Ver Apartados":
     st.title("📋 Registro de Clientes y Apartados")
