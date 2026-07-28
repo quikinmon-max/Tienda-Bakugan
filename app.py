@@ -173,8 +173,8 @@ if es_admin_url:
     elif admin_input != "":
         st.sidebar.error("Contraseña incorrecta.")
 
-# --- ESPACIO INVISIBLE PARA QUE EL MENÚ NO SE CORTE EN PC ---
-st.sidebar.markdown("<br><br><br><br><br><br><br>", unsafe_allow_html=True)
+# --- ESPACIO INVISIBLE PARA QUE EL MENÚ NO SE CORTE EN PC NI CELULAR ---
+st.sidebar.markdown("<div style='height: 400px;'></div>", unsafe_allow_html=True)
 
 
 # =====================================================================
