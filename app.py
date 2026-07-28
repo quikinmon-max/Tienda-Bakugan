@@ -47,11 +47,11 @@ css_global = f"""
 }}
 .block-container {{
     background-color: rgba(14, 17, 23, 0.85); 
-    padding-top: 5rem !important; /* <--- ESPACIO EXTRA ARRIBA PARA QUE NO SE PEGUE */
+    padding-top: 5rem !important;
     padding-right: 2rem;
     padding-bottom: 2rem;
     padding-left: 2rem;
-    margin-top: 2rem; /* <--- EMPUJÓN EXTRA HACIA ABAJO */
+    margin-top: 2rem;
     border-radius: 15px;
 }}
 .tarjeta-cliente {{
@@ -72,7 +72,7 @@ css_global = f"""
 /* AJUSTES RESPONSIVOS PARA MÓVILES Y iPHONE */
 @media (max-width: 768px) {{
     .block-container {{
-        padding-top: 3rem !important; /* En celular no necesitamos tanto espacio arriba */
+        padding-top: 3rem !important; 
         margin-top: 0rem;
     }}
     .producto-img {{
@@ -287,13 +287,15 @@ elif vista_admin == "➕ Agregar Producto":
         
     precio = st.number_input("Precio ($)", min_value=0.0, step=10.0)
     stock = st.number_input("Cantidad disponible", min_value=1, step=1)
-    imagenes_subidas = st.file_uploader("Sube hasta 5 fotos (Frontal, trasera...)", type=["png", "jpg", "jpeg"], accept_multiple_files=True)
+    
+    # AHORA PIDE HASTA 6 FOTOS
+    imagenes_subidas = st.file_uploader("Sube hasta 6 fotos (Frontal, trasera...)", type=["png", "jpg", "jpeg"], accept_multiple_files=True)
     
     if st.button("Subir Producto al Catálogo"):
         if nombre and imagenes_subidas and precio > 0:
-            if len(imagenes_subidas) > 5:
-                st.warning("Se guardarán solo las primeras 5 fotos.")
-                imagenes_subidas = imagenes_subidas[:5]
+            if len(imagenes_subidas) > 6: # VALIDA 6 FOTOS MÁXIMO
+                st.warning("Se guardarán solo las primeras 6 fotos.")
+                imagenes_subidas = imagenes_subidas[:6]
             lista_imagenes_b64 = [base64.b64encode(img.getvalue()).decode("utf-8") for img in imagenes_subidas]
             
             nuevo_prod = {
