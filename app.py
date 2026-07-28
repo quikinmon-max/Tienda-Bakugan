@@ -139,12 +139,26 @@ if logo_b64:
 else:
     st.sidebar.markdown("### 🛒 Mi Tienda")
 
-# 🚨 EL CANDADO INVISIBLE Y AUTENTICACIÓN 🚨
+# --- 1. FILTROS AHORA VAN ARRIBA ---
+st.sidebar.header("Filtros Avanzados")
+tipo_busqueda = st.sidebar.selectbox("¿Qué buscas?", ["Bakugans 🔥", "Cartas 🃏", "BakuCores 🛑", "Piezas / Detalles 🛠️"])
+
+if tipo_busqueda == "Bakugans 🔥":
+    sub_filtro = st.sidebar.selectbox("Filtra por Atributo", categorias)
+elif tipo_busqueda == "Cartas 🃏":
+    sub_filtro = st.sidebar.selectbox("Filtra por Material", materiales)
+elif tipo_busqueda == "BakuCores 🛑":
+    sub_filtro = st.sidebar.selectbox("Filtra por Símbolo", simbolos_core)
+else:
+    sub_filtro = "Todos"
+
+# --- 2. EL CANDADO INVISIBLE Y AUTENTICACIÓN AHORA VAN ABAJO ---
 es_admin_url = st.query_params.get("jefe") == "1"
 vista_admin = "Catálogo" 
 admin_autenticado = False
 
 if es_admin_url:
+    st.sidebar.markdown("---")
     admin_input = st.sidebar.text_input("🔑 Acceso Admin", type="password")
     if admin_input == st.secrets["ADMIN_PASS"]:
         admin_autenticado = True
@@ -158,20 +172,10 @@ if es_admin_url:
         ])
     elif admin_input != "":
         st.sidebar.error("Contraseña incorrecta.")
-    st.sidebar.markdown("---")
 
-# Filtros Globales (¡Agregamos la opción de piezas con detalles!)
-st.sidebar.header("Filtros Avanzados")
-tipo_busqueda = st.sidebar.selectbox("¿Qué buscas?", ["Bakugans 🔥", "Cartas 🃏", "BakuCores 🛑", "Piezas / Detalles 🛠️"])
+# --- ESPACIO INVISIBLE PARA QUE EL MENÚ NO SE CORTE EN PC ---
+st.sidebar.markdown("<br><br><br><br><br><br><br>", unsafe_allow_html=True)
 
-if tipo_busqueda == "Bakugans 🔥":
-    sub_filtro = st.sidebar.selectbox("Filtra por Atributo", categorias)
-elif tipo_busqueda == "Cartas 🃏":
-    sub_filtro = st.sidebar.selectbox("Filtra por Material", materiales)
-elif tipo_busqueda == "BakuCores 🛑":
-    sub_filtro = st.sidebar.selectbox("Filtra por Símbolo", simbolos_core)
-else:
-    sub_filtro = "Todos" # No necesitamos subfiltro si están buscando piezas sueltas/dañadas
 
 # =====================================================================
 # ======================== PANTALLA PRINCIPAL =========================
@@ -262,7 +266,6 @@ elif vista_admin == "➕ Agregar Producto":
     tipo_prod = st.radio("Tipo de Producto", ["Bakugan", "Carta", "BakuCore"])
     nombre = st.text_input("Nombre / Descripción principal")
     
-    # NUEVO CAMPO DE DETALLE
     detalle_prod = st.text_input("⚠️ Detalles o desperfectos (Opcional, déjalo vacío si está perfecto)")
     st.caption("*Si escribes algo aquí, el producto se moverá a la pestaña de 'Piezas / Detalles 🛠️' automáticamente.*")
     
@@ -290,7 +293,6 @@ elif vista_admin == "➕ Agregar Producto":
                 "stock": stock, "imagenes_b64": lista_imagenes_b64
             }
             
-            # Guardamos el detalle si el usuario lo escribió
             if detalle_prod.strip():
                 nuevo_prod["detalle"] = detalle_prod.strip()
                 
@@ -431,21 +433,19 @@ else:
     if busqueda_texto:
         query["nombre"] = {"$regex": busqueda_texto, "$options": "i"}
 
-    # --- LÓGICA DE FILTROS ACTUALIZADA (Separa piezas con y sin detalles) ---
     if tipo_busqueda == "Bakugans 🔥":
         query["$or"] = [{"tipo": "Bakugan"}, {"tipo": {"$exists": False}}]
-        query["detalle"] = {"$in": [None, ""]} # Excluye los que tienen detalles
+        query["detalle"] = {"$in": [None, ""]} 
         if sub_filtro != "Todos": query["atributo"] = sub_filtro
     elif tipo_busqueda == "Cartas 🃏":
         query["tipo"] = "Carta"
-        query["detalle"] = {"$in": [None, ""]} # Excluye los que tienen detalles
+        query["detalle"] = {"$in": [None, ""]} 
         if sub_filtro != "Todas": query["material"] = sub_filtro
     elif tipo_busqueda == "BakuCores 🛑": 
         query["tipo"] = "BakuCore"
-        query["detalle"] = {"$in": [None, ""]} # Excluye los que tienen detalles
+        query["detalle"] = {"$in": [None, ""]} 
         if sub_filtro != "Todos": query["simbolo"] = sub_filtro
     elif tipo_busqueda == "Piezas / Detalles 🛠️":
-        # Muestra CUALQUIER producto (bakugan, carta, core) que TENGAN un detalle escrito
         query["detalle"] = {"$nin": [None, ""]}
 
     productos = list(col_productos.find(query))
@@ -482,7 +482,6 @@ else:
                 elif tipo_busqueda == "Cartas 🃏": st.write(f"**Material:** {prod.get('material', 'N/A')}")
                 elif tipo_busqueda == "BakuCores 🛑": st.write(f"**Símbolo:** {prod.get('simbolo', 'N/A')}")
                 
-                # MOSTRAR EL AVISO DEL DETALLE SI LO TIENE
                 if "detalle" in prod and prod["detalle"]:
                     st.warning(f"⚠️ **Detalle:** {prod['detalle']}")
                 
