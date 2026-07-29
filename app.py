@@ -44,6 +44,15 @@ def comprimir_imagen(img_file):
     img.save(buffer, format="JPEG", quality=70)
     return base64.b64encode(buffer.getvalue()).decode("utf-8")
 
+# ---------------- FUNCIÓN DE AMPLIACIÓN DE FOTOS (MODAL) ----------------
+@st.dialog("🖼️ Galería Ampliada")
+def abrir_zoom(nombre_prod, imagenes_b64):
+    """Abre una ventana sobrepuesta para ver las fotos en grande"""
+    st.markdown(f"### {nombre_prod}")
+    for img_b64 in imagenes_b64:
+        # Decodificamos el texto Base64 a bytes para que Streamlit la renderice gigante
+        st.image(base64.b64decode(img_b64), use_container_width=True)
+
 # ---------------- CARGAR DISEÑO PERSONALIZADO (FONDO Y CSS) ----------------
 config_data = col_config.find_one({"_id": "sitio_prefs"})
 fondo_b64 = config_data.get("fondo_b64") if config_data else None
@@ -99,7 +108,7 @@ css_global = f"""
     flex: 0 0 100%;
     width: 100%;
     aspect-ratio: 1 / 1 !important; /* Cuadrado perfecto */
-    object-fit: cover !important; /* MAGIA AQUÍ: Rellena TODO el cuadrado estilo Instagram */
+    object-fit: cover !important; /* Rellena TODO el cuadrado estilo Instagram */
     border-radius: 8px;
     background-color: transparent; 
 }}
@@ -497,7 +506,7 @@ else:
                 if not imagenes_del_producto and "imagen_b64" in prod:
                     imagenes_del_producto = [prod["imagen_b64"]]
                 
-                # ------ GALERÍA TRANSPARENTE ------
+                # ------ GALERÍA TRANSPARENTE CON BOTÓN DE AMPLIAR ------
                 if imagenes_del_producto:
                     html_galeria = '<div class="galeria-container">'
                     for b64_img in imagenes_del_producto:
@@ -507,7 +516,11 @@ else:
                     st.markdown(html_galeria, unsafe_allow_html=True)
                     
                     if len(imagenes_del_producto) > 1:
-                        st.markdown("<p style='text-align: center; color: #aaa; font-size: 13px; margin-top: -5px;'>👉 Desliza la foto</p>", unsafe_allow_html=True)
+                        st.markdown("<p style='text-align: center; color: #aaa; font-size: 13px; margin-top: -5px; margin-bottom: 5px;'>👉 Desliza la foto</p>", unsafe_allow_html=True)
+                    
+                    # AQUÍ ESTÁ EL BOTÓN QUE ABRE EL MODAL DE ZOOM
+                    if st.button("🔍 Ampliar foto", key=f"zoom_{prod['_id']}", use_container_width=True):
+                        abrir_zoom(prod['nombre'], imagenes_del_producto)
                 
                 precio_mostrar = prod.get('precio', 0.0)
                 stock_actual = prod.get('stock', 0)
