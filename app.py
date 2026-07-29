@@ -37,6 +37,13 @@ col_config = db["configuracion"]
 col_ventas = db["ventas"] 
 col_carritos = db["carritos_temporales"] 
 
+# --- MIGRACIÓN AUTOMÁTICA DE APARTADOS VIEJOS ---
+# Actualiza los apartados que se hicieron antes de esta mejora para que tengan vencimiento
+viejos = col_apartados.find({"fecha_vencimiento": {"$exists": False}})
+for v in viejos:
+    fv = v.get("fecha_apartado", datetime.now()) + timedelta(days=3)
+    col_apartados.update_one({"_id": v["_id"]}, {"$set": {"fecha_vencimiento": fv, "anticipo": 0.0}})
+
 # ---------------- SISTEMA ANTICAÍDAS (CARRITO Y SESIÓN) ----------------
 if 'session_id' not in st.session_state:
     if "sesion" in st.query_params:
@@ -128,10 +135,11 @@ css_global = f"""
 """
 st.markdown(css_global, unsafe_allow_html=True)
 
-# ---------------- MANTENIMIENTO INTELIGENTE ----------------
+# ---------------- MANTENIMIENTO INTELIGENTE (AHORA USA FECHA DE VENCIMIENTO) ----------------
 def mantenimiento_base_datos():
-    limite_ap = datetime.now() - timedelta(days=3)
-    vencidos = col_apartados.find({"fecha_apartado": {"$lt": limite_ap}})
+    ahora = datetime.now()
+    # Eliminar solo los que ya pasaron de su fecha_vencimiento
+    vencidos = col_apartados.find({"fecha_vencimiento": {"$lt": ahora}})
     for doc in vencidos:
         campo = doc.get("campo_stock", "stock")
         col_productos.update_one({"_id": doc["producto_id"]}, {"$inc": {campo: 1}})
@@ -158,19 +166,8 @@ else:
 
 st.sidebar.header("Filtros Avanzados")
 
-# --- 1. SE AGREGÓ "Deka 🌐" A LA LISTA VISUAL DEL CLIENTE ---
 tipo_busqueda = st.sidebar.selectbox("¿Qué buscas?", [
-    "Todo el Catálogo 🌍", 
-    "Bakugans 🔥", 
-    "Cartas 🃏", 
-    "BakuCores 🛑", 
-    "Vehículos 🏎️", 
-    "Armamentos ⚔️", 
-    "BakuTech 🦾", 
-    "Extras 🎁", 
-    "Sets de Batalla 🏟️", 
-    "Deka 🌐",
-    "Piezas / Detalles 🛠️"
+    "Todo el Catálogo 🌍", "Bakugans 🔥", "Cartas 🃏", "BakuCores 🛑", "Vehículos 🏎️", "Armamentos ⚔️", "BakuTech 🦾", "Extras 🎁", "Sets de Batalla 🏟️", "Deka 🌐", "Piezas / Detalles 🛠️"
 ])
 
 if tipo_busqueda == "Bakugans 🔥": sub_filtro = st.sidebar.selectbox("Filtra por Atributo", categorias)
@@ -255,7 +252,6 @@ elif vista_admin == "🎨 Personalizar Página":
 elif vista_admin == "➕ Agregar Producto":
     st.title("🛠️ Agregar nuevo producto")
     
-    # --- 2. SE AGREGÓ "Deka" AL MENÚ DE ADMINISTRADOR ---
     tipo_prod = st.selectbox("Tipo de Producto", [
         "Bakugan", "Carta", "BakuCore", "Vehículo", "Armamento", "BakuTech", "Extra", "Set de Batalla", "Deka"
     ])
@@ -326,35 +322,69 @@ elif vista_admin == "📋 Ver Apartados":
         for tel, items in clientes_dict.items():
             nombre_cliente = items[0].get("comprador_nombre", "Desconocido")
             st.markdown(f'<div class="tarjeta-cliente"><h4>👤 {nombre_cliente} | 📞 WA: {tel}</h4>', unsafe_allow_html=True)
+            
             total_cliente = 0
+            total_anticipo = 0
+            fechas_venc = []
             nombres_items = []
+            
             for item in items:
-                fecha_str = item["fecha_apartado"].strftime("%d/%m %H:%M")
+                fecha_str = item["fecha_apartado"].strftime("%d/%m")
                 precio_item = item.get("precio", 0.0)
                 total_cliente += precio_item
+                total_anticipo += item.get("anticipo", 0.0)
+                fechas_venc.append(item.get("fecha_vencimiento", datetime.now()))
                 nombres_items.append(item['nombre_producto'])
-                st.write(f"- **{item['nombre_producto']}** (${precio_item}) _[Apartado: {fecha_str}]_")
+                st.write(f"- **{item['nombre_producto']}** (${precio_item}) _[Apt: {fecha_str}]_")
             
-            st.markdown(f"**Total a cobrar:** <span style='color:#2ecc71; font-size:1.2em;'>${total_cliente}</span>", unsafe_allow_html=True)
-            col_conf, col_canc = st.columns(2)
+            fecha_max_venc = max(fechas_venc).strftime("%d/%m %H:%M")
+            restante = total_cliente - total_anticipo
+            
+            st.markdown(f"**⏳ Vence el:** {fecha_max_venc}")
+            st.markdown(f"**💰 Total pedido:** ${total_cliente}")
+            if total_anticipo > 0:
+                st.markdown(f"**💸 Anticipo dado:** <span style='color:#f39c12;'>${total_anticipo}</span>", unsafe_allow_html=True)
+                st.markdown(f"**⚠️ Restante a cobrar:** <span style='color:#e74c3c; font-size:1.2em; font-weight:bold;'>${restante}</span>", unsafe_allow_html=True)
+            else:
+                st.markdown(f"**⚠️ Total a cobrar:** <span style='color:#2ecc71; font-size:1.2em; font-weight:bold;'>${total_cliente}</span>", unsafe_allow_html=True)
+            
+            col_conf, col_pro, col_canc = st.columns(3)
             with col_conf:
-                with st.expander("✅ Confirmar Pago"):
+                with st.expander("✅ Procesar Venta"):
                     cobro_envio = st.number_input("Cobro Envío $", min_value=0.0, step=10.0, key=f"cobro_{tel}")
                     gastos = st.number_input("Costo Guía $", min_value=0.0, step=10.0, key=f"gasto_{tel}")
                     obs = st.text_input("Obs", key=f"obs_{tel}")
-                    if st.button("Procesar Venta", key=f"btn_venta_{tel}"):
+                    if st.button("Confirmar", key=f"btn_venta_{tel}"):
                         col_ventas.insert_one({
                             "cliente": nombre_cliente, "telefono": tel, "productos": nombres_items,
                             "precio_productos": total_cliente, "ingreso_envio": cobro_envio,
+                            "anticipo_previo": total_anticipo,
                             "precio_total": total_cliente + cobro_envio, "gasto_envio": gastos,
                             "observaciones": obs, "fecha_venta": datetime.now()
                         })
                         for item in items: col_apartados.delete_one({"_id": item["_id"]})
                         st.success("¡Venta registrada!")
                         st.rerun()
+                        
+            with col_pro:
+                with st.expander("⏳ Prórroga / Abono"):
+                    nuevo_anticipo = st.number_input("Abonar Anticipo $", min_value=0.0, step=50.0, key=f"ant_{tel}")
+                    dias_pro = st.number_input("Sumar Días Extra", min_value=0, step=1, value=1, key=f"dias_{tel}")
+                    if st.button("Aplicar", key=f"btn_pro_{tel}"):
+                        ids_items = [item["_id"] for item in items]
+                        # Abonamos el anticipo al primer item para no duplicar sumas
+                        if nuevo_anticipo > 0:
+                            col_apartados.update_one({"_id": ids_items[0]}, {"$inc": {"anticipo": nuevo_anticipo}})
+                        # Actualizamos la fecha de vencimiento a todos los items del cliente
+                        if dias_pro > 0:
+                            nueva_fecha = max(fechas_venc) + timedelta(days=dias_pro)
+                            col_apartados.update_many({"_id": {"$in": ids_items}}, {"$set": {"fecha_vencimiento": nueva_fecha}})
+                        st.success("¡Prórroga aplicada!")
+                        st.rerun()
+                        
             with col_canc:
-                with st.expander("🚫 Cancelar Pedido"):
-                    if st.button("Confirmar Cancelación", key=f"btn_cancel_{tel}"):
+                with st.expander("🚫 Cancelar"):
+                    if st.button("Confirmar", key=f"btn_cancel_{tel}"):
                         for doc in items:
                             campo = doc.get("campo_stock", "stock")
                             col_productos.update_one({"_id": doc["producto_id"]}, {"$inc": {campo: 1}})
@@ -400,7 +430,7 @@ else:
                     
                     if st.button("Confirmar Apartado", use_container_width=True, type="primary"):
                         if nom and tel:
-                            # 1. Guardar en Base de Datos de apartados
+                            # 1. Guardar en Base de Datos de apartados CON FECHA DE VENCIMIENTO (+3 días inicial)
                             for prod_cart in st.session_state.carrito:
                                 db_prod = col_productos.find_one({"_id": prod_cart["_id"]})
                                 campo_stock = "stock"
@@ -410,7 +440,10 @@ else:
                                 col_apartados.insert_one({
                                     "producto_id": prod_cart["_id"], "nombre_producto": prod_cart["nombre"],
                                     "precio": prod_cart["precio"], "comprador_nombre": nom, "comprador_telefono": tel,
-                                    "fecha_apartado": datetime.now(), "campo_stock": campo_stock
+                                    "fecha_apartado": datetime.now(), 
+                                    "fecha_vencimiento": datetime.now() + timedelta(days=3), # <-- NUEVA LÓGICA DE VENCIMIENTO
+                                    "campo_stock": campo_stock,
+                                    "anticipo": 0.0 # <-- NUEVO CAMPO DE ANTICIPO INICIAL
                                 })
                                 col_productos.update_one({"_id": prod_cart["_id"]}, {"$inc": {campo_stock: -1}})
                             
@@ -434,7 +467,6 @@ else:
     query_base = {}
     if busqueda_texto: query_base["nombre"] = {"$regex": busqueda_texto, "$options": "i"}
 
-    # --- 3. SE AGREGÓ LA LÓGICA DE FILTRADO PARA "Deka" ---
     if tipo_busqueda == "Bakugans 🔥":
         query_base["$or"] = [{"tipo": "Bakugan"}, {"tipo": {"$exists": False}}]
         if sub_filtro != "Todos": query_base["atributo"] = sub_filtro
