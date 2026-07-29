@@ -435,7 +435,16 @@ else:
         with col_busc: busqueda_texto = st.text_input("Buscar", placeholder="🔍 Buscar...", label_visibility="collapsed")
         with col_cart:
             cantidad_carrito = len(st.session_state.carrito)
-            total_carrito = sum(item['precio'] for item in st.session_state.carrito)
+            
+            # --- LÓGICA DE PROMOCIÓN DE CARTAS ---
+            num_cartas = sum(1 for item in st.session_state.carrito if item.get("tipo") == "Carta")
+            promo_activa = num_cartas >= 5
+            
+            total_carrito = 0
+            for item in st.session_state.carrito:
+                precio_efectivo = 40.0 if (promo_activa and item.get("tipo") == "Carta") else item['precio']
+                total_carrito += precio_efectivo
+            
             with st.popover(f"🛒 Carrito ({cantidad_carrito}) - ${total_carrito}", use_container_width=True):
                 if 'wa_link' in st.session_state:
                     st.success("✅ ¡Piezas apartadas!")
@@ -443,15 +452,28 @@ else:
                     if st.button("Cerrar Aviso", use_container_width=True):
                         del st.session_state['wa_link']
                         st.rerun()
+                
                 st.markdown("#### Resumen:")
+                
                 if cantidad_carrito > 0:
+                    if promo_activa:
+                        st.success("🎉 ¡Promo activa: Cartas a $40 c/u!")
+                        
                     for i, item in enumerate(st.session_state.carrito):
                         c1, c2 = st.columns([4, 1])
-                        c1.markdown(f"<span style='font-size:0.9em;'>{item['nombre']} - **${item['precio']}**</span>", unsafe_allow_html=True)
+                        
+                        precio_item = 40.0 if (promo_activa and item.get("tipo") == "Carta") else item['precio']
+                        if promo_activa and item.get("tipo") == "Carta" and item['precio'] > 40:
+                            texto_precio = f"~~${item['precio']}~~ **${precio_item}**"
+                        else:
+                            texto_precio = f"**${precio_item}**"
+                            
+                        c1.markdown(f"<span style='font-size:0.9em;'>{item['nombre']} - {texto_precio}</span>", unsafe_allow_html=True)
                         if c2.button("❌", key=f"del_cart_{i}_{item['_id']}"):
                             st.session_state.carrito.pop(i)
                             guardar_carrito() 
                             st.rerun()
+                            
                     st.markdown("---")
                     st.markdown(f"**Total a pagar: ${total_carrito}**")
                     nom = st.text_input("Tu Nombre", key="checkout_nom")
@@ -459,16 +481,18 @@ else:
                     
                     if st.button("Confirmar Apartado", use_container_width=True, type="primary"):
                         if nom and tel:
-                            # 1. Guardar en Base de Datos de apartados
+                            # 1. Guardar en Base de Datos de apartados con el precio final calculado
                             for prod_cart in st.session_state.carrito:
                                 db_prod = col_productos.find_one({"_id": prod_cart["_id"]})
                                 campo_stock = "stock"
                                 if prod_cart.get("variante") == "detalle":
                                     campo_stock = "stock_detalle" if "stock_detalle" in db_prod else "stock"
+                                
+                                precio_final_bd = 40.0 if (promo_activa and prod_cart.get("tipo") == "Carta") else prod_cart["precio"]
                                     
                                 col_apartados.insert_one({
                                     "producto_id": prod_cart["_id"], "nombre_producto": prod_cart["nombre"],
-                                    "precio": prod_cart["precio"], "comprador_nombre": nom, "comprador_telefono": tel,
+                                    "precio": precio_final_bd, "comprador_nombre": nom, "comprador_telefono": tel,
                                     "fecha_apartado": hora_qro(), 
                                     "fecha_vencimiento": hora_qro() + timedelta(days=3), 
                                     "campo_stock": campo_stock,
@@ -476,10 +500,12 @@ else:
                                 })
                                 col_productos.update_one({"_id": prod_cart["_id"]}, {"$inc": {campo_stock: -1}})
                             
-                            # 2. CONSTRUIR EL MENSAJE DETALLADO DE WHATSAPP
+                            # 2. CONSTRUIR EL MENSAJE DETALLADO DE WHATSAPP CON DESCUENTOS
                             texto_crudo = f"Hola, soy {nom}. Acabo de apartar {cantidad_carrito} piezas por un total de ${total_carrito}.\n\nMis piezas son:\n"
                             for item in st.session_state.carrito:
-                                texto_crudo += f"👉 {item['nombre']} (${item['precio']})\n"
+                                precio_final_wa = 40.0 if (promo_activa and item.get("tipo") == "Carta") else item["precio"]
+                                msg_promo = " (Promo $40)" if (promo_activa and item.get("tipo") == "Carta" and item["precio"] > 40) else ""
+                                texto_crudo += f"👉 {item['nombre']} (${precio_final_wa}){msg_promo}\n"
                             
                             texto_url = urllib.parse.quote(texto_crudo)
                             st.session_state.wa_link = f"https://wa.me/4462879839?text={texto_url}"
@@ -595,8 +621,9 @@ else:
                             st.write(f"🟢 **Perfecta:** ${precio_normal}{cu_norm} (Disp: {stock_normal})")
                             
                             if (stock_normal - en_carrito_normal) > 0:
-                                if st.button(f"🛒 Añadir Normal", key=f"add_n_{prod['_id']}", use_container_width=True):
-                                    st.session_state.carrito.append({"_id": prod["_id"], "nombre": f"{prod['nombre']}", "precio": precio_normal, "variante": "normal"})
+                                if st.button("🛒 Añadir", key=f"add_n_{prod['_id']}", use_container_width=True):
+                                    # SE AÑADIÓ "tipo": tipo_real PARA QUE LA LÓGICA DE PROMO FUNCIONE
+                                    st.session_state.carrito.append({"_id": prod["_id"], "nombre": f"{prod['nombre']}", "precio": precio_normal, "variante": "normal", "tipo": tipo_real})
                                     guardar_carrito() 
                                     st.rerun()
                             else: st.button("✅ En carrito (Máx)", disabled=True, key=f"max_n_{prod['_id']}", use_container_width=True)
@@ -608,8 +635,9 @@ else:
                             st.write(f"🟠 **C/Detalle:** ${precio_detalle}{cu_det} (Disp: {stock_detalle})")
                             
                             if (stock_detalle - en_carrito_detalle) > 0:
-                                if st.button(f"🛒 Añadir c/Detalle", key=f"add_d_{prod['_id']}", use_container_width=True):
-                                    st.session_state.carrito.append({"_id": prod["_id"], "nombre": f"{prod['nombre']} (Detalle)", "precio": precio_detalle, "variante": "detalle"})
+                                if st.button("🛒 Añadir", key=f"add_d_{prod['_id']}", use_container_width=True):
+                                    # SE AÑADIÓ "tipo": tipo_real PARA QUE LA LÓGICA DE PROMO FUNCIONE
+                                    st.session_state.carrito.append({"_id": prod["_id"], "nombre": f"{prod['nombre']} (Detalle)", "precio": precio_detalle, "variante": "detalle", "tipo": tipo_real})
                                     guardar_carrito() 
                                     st.rerun()
                             else: st.button("✅ Detalle en carrito", disabled=True, key=f"max_d_{prod['_id']}", use_container_width=True)
