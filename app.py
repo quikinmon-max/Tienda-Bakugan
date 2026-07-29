@@ -15,6 +15,11 @@ st.set_page_config(
     layout="wide"
 )
 
+# ---------------- CONFIGURACIÓN EXACTA DE TIEMPO (QUERÉTARO) ----------------
+def hora_qro():
+    """Calcula la hora exacta de Querétaro (UTC-6) sin importar dónde esté el servidor"""
+    return datetime.utcnow() - timedelta(hours=6)
+
 # ---------------- INICIALIZAR MEMORIA Y SEMILLA ALEATORIA ----------------
 if 'carrito' not in st.session_state:
     st.session_state.carrito = []
@@ -40,7 +45,7 @@ col_carritos = db["carritos_temporales"]
 # --- MIGRACIÓN AUTOMÁTICA DE APARTADOS VIEJOS ---
 viejos = col_apartados.find({"fecha_vencimiento": {"$exists": False}})
 for v in viejos:
-    fv = v.get("fecha_apartado", datetime.now()) + timedelta(days=3)
+    fv = v.get("fecha_apartado", hora_qro()) + timedelta(days=3)
     col_apartados.update_one({"_id": v["_id"]}, {"$set": {"fecha_vencimiento": fv, "anticipo": 0.0}})
 
 # ---------------- SISTEMA ANTICAÍDAS (CARRITO Y SESIÓN) ----------------
@@ -61,7 +66,7 @@ if 'carrito' not in st.session_state or not st.session_state.carrito:
 def guardar_carrito():
     col_carritos.update_one(
         {"_id": st.session_state.session_id},
-        {"$set": {"items": st.session_state.carrito, "fecha": datetime.now()}},
+        {"$set": {"items": st.session_state.carrito, "fecha": hora_qro()}},
         upsert=True
     )
 
@@ -136,14 +141,14 @@ st.markdown(css_global, unsafe_allow_html=True)
 
 # ---------------- MANTENIMIENTO INTELIGENTE ----------------
 def mantenimiento_base_datos():
-    ahora = datetime.now()
+    ahora = hora_qro()
     vencidos = col_apartados.find({"fecha_vencimiento": {"$lt": ahora}})
     for doc in vencidos:
         campo = doc.get("campo_stock", "stock")
         col_productos.update_one({"_id": doc["producto_id"]}, {"$inc": {campo: 1}})
         col_apartados.delete_one({"_id": doc["_id"]})
     
-    limite_cart = datetime.now() - timedelta(days=1)
+    limite_cart = hora_qro() - timedelta(days=1)
     col_carritos.delete_many({"fecha": {"$lt": limite_cart}})
 
 mantenimiento_base_datos()
@@ -205,7 +210,7 @@ if vista_admin == "📊 Finanzas y Ventas":
     if not ventas:
         st.info("Aún no tienes ventas registradas para analizar.")
     else:
-        hoy = datetime.now()
+        hoy = hora_qro()
         def filtrar_por_fecha(dias):
             return [v for v in ventas if v["fecha_venta"] >= hoy - timedelta(days=dias)]
         ventas_hoy = [v for v in ventas if v["fecha_venta"].date() == hoy.date()]
@@ -258,7 +263,6 @@ elif vista_admin == "➕ Agregar Producto":
     
     col1, col2, col3 = st.columns(3)
     
-    # --- AQUÍ ESTÁ EL CAMBIO PARA DESBLOQUEAR EL ATRIBUTO ---
     tipos_con_atributo = ["Bakugan", "Vehículo", "Armamento", "BakuTech", "Set de Batalla", "Deka"]
     
     with col1: atributo_form = st.selectbox("Atributo", categorias[1:], disabled=(tipo_prod not in tipos_con_atributo)) 
@@ -299,7 +303,6 @@ elif vista_admin == "➕ Agregar Producto":
                 "imagenes_b64": lista_imagenes_b64, "imagenes_detalle_b64": lista_imagenes_detalle_b64
             }
             
-            # --- AQUÍ ESTÁ EL CAMBIO PARA GUARDAR EL ATRIBUTO ---
             if tipo_prod in tipos_con_atributo: nuevo_prod["atributo"] = atributo_form
             elif tipo_prod == "Carta": nuevo_prod["material"] = material_form
             elif tipo_prod == "BakuCore": nuevo_prod["simbolo"] = simbolo_form
@@ -337,7 +340,7 @@ elif vista_admin == "📋 Ver Apartados":
                 precio_item = item.get("precio", 0.0)
                 total_cliente += precio_item
                 total_anticipo += item.get("anticipo", 0.0)
-                fechas_venc.append(item.get("fecha_vencimiento", datetime.now()))
+                fechas_venc.append(item.get("fecha_vencimiento", hora_qro()))
                 nombres_items.append(item['nombre_producto'])
                 st.write(f"- **{item['nombre_producto']}** (${precio_item}) _[Apt: {fecha_str}]_")
             
@@ -364,7 +367,7 @@ elif vista_admin == "📋 Ver Apartados":
                             "precio_productos": total_cliente, "ingreso_envio": cobro_envio,
                             "anticipo_previo": total_anticipo,
                             "precio_total": total_cliente + cobro_envio, "gasto_envio": gastos,
-                            "observaciones": obs, "fecha_venta": datetime.now()
+                            "observaciones": obs, "fecha_venta": hora_qro()
                         })
                         for item in items: col_apartados.delete_one({"_id": item["_id"]})
                         st.success("¡Venta registrada!")
@@ -466,8 +469,8 @@ else:
                                 col_apartados.insert_one({
                                     "producto_id": prod_cart["_id"], "nombre_producto": prod_cart["nombre"],
                                     "precio": prod_cart["precio"], "comprador_nombre": nom, "comprador_telefono": tel,
-                                    "fecha_apartado": datetime.now(), 
-                                    "fecha_vencimiento": datetime.now() + timedelta(days=3), 
+                                    "fecha_apartado": hora_qro(), 
+                                    "fecha_vencimiento": hora_qro() + timedelta(days=3), 
                                     "campo_stock": campo_stock,
                                     "anticipo": 0.0
                                 })
