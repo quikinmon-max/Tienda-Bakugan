@@ -2,6 +2,8 @@ import streamlit as st
 import pymongo
 import base64
 import random
+import uuid
+import urllib.parse
 from datetime import datetime, timedelta
 from PIL import Image, ImageOps
 import io
@@ -17,7 +19,6 @@ st.set_page_config(
 if 'carrito' not in st.session_state:
     st.session_state.carrito = []
 
-# Esta semilla congela el orden aleatorio por visita para que las fotos no brinquen al dar clic
 if 'rand_seed' not in st.session_state:
     st.session_state.rand_seed = random.randint(1, 999999)
 
@@ -34,6 +35,33 @@ col_productos = db["productos"]
 col_apartados = db["apartados"]
 col_config = db["configuracion"] 
 col_ventas = db["ventas"] 
+col_carritos = db["carritos_temporales"] 
+
+# ---------------- SISTEMA ANTICAÍDAS (CARRITO Y SESIÓN) ----------------
+if 'session_id' not in st.session_state:
+    if "sesion" in st.query_params:
+        st.session_state.session_id = st.query_params["sesion"]
+    else:
+        st.session_state.session_id = str(uuid.uuid4())[:8] 
+        st.query_params["sesion"] = st.session_state.session_id
+
+if 'carrito' not in st.session_state or not st.session_state.carrito:
+    carrito_guardado = col_carritos.find_one({"_id": st.session_state.session_id})
+    if carrito_guardado:
+        st.session_state.carrito = carrito_guardado.get("items", [])
+    else:
+        st.session_state.carrito = []
+
+def guardar_carrito():
+    col_carritos.update_one(
+        {"_id": st.session_state.session_id},
+        {"$set": {"items": st.session_state.carrito, "fecha": datetime.now()}},
+        upsert=True
+    )
+
+# Memoria para que no te saque del modo Admin si la página se reinicia
+if 'admin_autenticado' not in st.session_state:
+    st.session_state.admin_autenticado = False
 
 # ---------------- MOTOR DE COMPRESIÓN DE IMÁGENES ----------------
 def comprimir_imagen(img_file):
@@ -45,7 +73,7 @@ def comprimir_imagen(img_file):
     img.save(buffer, format="JPEG", quality=70)
     return base64.b64encode(buffer.getvalue()).decode("utf-8")
 
-# ---------------- FUNCIÓN DE AMPLIACIÓN DE FOTOS (MODAL CON CARRETE) ----------------
+# ---------------- FUNCIÓN DE AMPLIACIÓN DE FOTOS (MODAL) ----------------
 @st.dialog("🔍 Modo Detalle")
 def abrir_zoom(nombre_prod, imagenes_b64):
     st.markdown(f"### {nombre_prod}")
@@ -66,10 +94,7 @@ css_global = f"""
 <style>
 .stApp {{
     {'background-image: url("data:image/png;base64,' + fondo_b64 + '");' if fondo_b64 else ''}
-    background-size: cover;
-    background-position: center;
-    background-repeat: no-repeat;
-    background-attachment: fixed;
+    background-size: cover; background-position: center; background-repeat: no-repeat; background-attachment: fixed;
 }}
 .stApp > header {{ background-color: transparent; }}
 .block-container {{
@@ -78,8 +103,7 @@ css_global = f"""
     margin-top: 2rem; border-radius: 15px;
 }}
 .tarjeta-cliente {{
-    background-color: rgba(255, 255, 255, 0.1);
-    padding: 15px; border-radius: 10px; margin-bottom: 10px; border: 1px solid #444;
+    background-color: rgba(255, 255, 255, 0.1); padding: 15px; border-radius: 10px; margin-bottom: 10px; border: 1px solid #444;
 }}
 .galeria-container {{
     display: flex; overflow-x: auto; scroll-snap-type: x mandatory; gap: 0;
@@ -104,16 +128,19 @@ css_global = f"""
 """
 st.markdown(css_global, unsafe_allow_html=True)
 
-# ---------------- LÓGICA DE CADUCIDAD ----------------
-def limpiar_apartados_vencidos():
-    limite_fecha = datetime.now() - timedelta(days=3)
-    vencidos = col_apartados.find({"fecha_apartado": {"$lt": limite_fecha}})
+# ---------------- MANTENIMIENTO INTELIGENTE ----------------
+def mantenimiento_base_datos():
+    limite_ap = datetime.now() - timedelta(days=3)
+    vencidos = col_apartados.find({"fecha_apartado": {"$lt": limite_ap}})
     for doc in vencidos:
         campo = doc.get("campo_stock", "stock")
         col_productos.update_one({"_id": doc["producto_id"]}, {"$inc": {campo: 1}})
         col_apartados.delete_one({"_id": doc["_id"]})
+    
+    limite_cart = datetime.now() - timedelta(days=1)
+    col_carritos.delete_many({"fecha": {"$lt": limite_cart}})
 
-limpiar_apartados_vencidos()
+mantenimiento_base_datos()
 
 # ---------------- VARIABLES GLOBALES ----------------
 categorias = ["Todos", "Pyrus 🔥", "Aquos 💧", "Ventus 🍃", "Darkus 🌑", "Haos ✨", "Subterra 🪨"]
@@ -139,14 +166,22 @@ else: sub_filtro = "Todos"
 
 es_admin_url = st.query_params.get("jefe") == "1"
 vista_admin = "Catálogo" 
-admin_autenticado = False
 
 if es_admin_url:
     st.sidebar.markdown("---")
-    admin_input = st.sidebar.text_input("🔑 Acceso Admin", type="password")
-    if admin_input == st.secrets["ADMIN_PASS"]:
-        admin_autenticado = True
+    if not st.session_state.admin_autenticado:
+        admin_input = st.sidebar.text_input("🔑 Acceso Admin", type="password")
+        if admin_input == st.secrets["ADMIN_PASS"]:
+            st.session_state.admin_autenticado = True
+            st.rerun()
+        elif admin_input != "":
+            st.sidebar.error("Contraseña incorrecta.")
+    
+    if st.session_state.admin_autenticado:
         st.sidebar.success("¡Bienvenido, jefe!")
+        if st.sidebar.button("🚪 Cerrar Sesión"):
+            st.session_state.admin_autenticado = False
+            st.rerun()
         vista_admin = st.sidebar.radio("Opciones de Administrador", ["Ver Catálogo", "➕ Agregar Producto", "📋 Ver Apartados", "📊 Finanzas y Ventas", "🎨 Personalizar Página"])
 
 st.sidebar.markdown("<div style='height: 400px;'></div>", unsafe_allow_html=True)
@@ -157,26 +192,23 @@ st.sidebar.markdown("<div style='height: 400px;'></div>", unsafe_allow_html=True
 
 if vista_admin == "📊 Finanzas y Ventas":
     st.title("📊 Panel de Analítica Financiera")
-    st.markdown("Revisa el rendimiento de tu tienda. KPIs calculados al instante.")
     ventas = list(col_ventas.find({}))
     if not ventas:
         st.info("Aún no tienes ventas registradas para analizar.")
     else:
         hoy = datetime.now()
         def filtrar_por_fecha(dias):
-            fecha_limite = hoy - timedelta(days=dias)
-            return [v for v in ventas if v["fecha_venta"] >= fecha_limite]
+            return [v for v in ventas if v["fecha_venta"] >= hoy - timedelta(days=dias)]
         ventas_hoy = [v for v in ventas if v["fecha_venta"].date() == hoy.date()]
-        ventas_semana = filtrar_por_fecha(7)
-        ventas_mes = filtrar_por_fecha(30)
-        ventas_anio = filtrar_por_fecha(365)
+        ventas_semana, ventas_mes, ventas_anio = filtrar_por_fecha(7), filtrar_por_fecha(30), filtrar_por_fecha(365)
+        
         def calcular_metricas(lista_ventas):
             ingresos = sum(v.get("precio_total", 0) for v in lista_ventas)
             gastos = sum(v.get("gasto_envio", 0) for v in lista_ventas)
             return ingresos, gastos, ingresos - gastos
+            
         tab1, tab2, tab3, tab4 = st.tabs(["Hoy", "Últimos 7 Días", "Últimos 30 Días", "Este Año"])
-        datos_tabs = [(tab1, ventas_hoy), (tab2, ventas_semana), (tab3, ventas_mes), (tab4, ventas_anio)]
-        for tab, datos_rango in datos_tabs:
+        for tab, datos_rango in [(tab1, ventas_hoy), (tab2, ventas_semana), (tab3, ventas_mes), (tab4, ventas_anio)]:
             with tab:
                 ing, gas, gan = calcular_metricas(datos_rango)
                 col1, col2, col3, col4 = st.columns(4)
@@ -184,6 +216,7 @@ if vista_admin == "📊 Finanzas y Ventas":
                 col2.metric("💸 Brutos", f"${ing:,.2f}")
                 col3.metric("📉 Gastos", f"${gas:,.2f}")
                 col4.metric("💰 Neta", f"${gan:,.2f}")
+                
         st.markdown("---")
         st.subheader("📝 Historial Detallado de Ventas")
         for v in reversed(ventas):
@@ -194,7 +227,7 @@ if vista_admin == "📊 Finanzas y Ventas":
 elif vista_admin == "🎨 Personalizar Página":
     st.title("🎨 Personaliza el Diseño de tu Tienda")
     with st.form("form_personalizacion"):
-        nuevo_fondo = st.file_uploader("Fondo de Pantalla HD (Recomendado: Horizontal)", type=["png", "jpg", "jpeg"])
+        nuevo_fondo = st.file_uploader("Fondo de Pantalla HD", type=["png", "jpg", "jpeg"])
         nuevo_logo = st.file_uploader("Logo del Menú Lateral", type=["png", "jpg", "jpeg"])
         if st.form_submit_button("Guardar Diseño"):
             update_data = {}
@@ -207,8 +240,6 @@ elif vista_admin == "🎨 Personalizar Página":
 
 elif vista_admin == "➕ Agregar Producto":
     st.title("🛠️ Agregar nuevo producto Multivariante")
-    st.markdown("Ahora puedes subir la versión normal y la de detalles en la misma publicación, con sus fotos separadas.")
-    st.markdown("---")
     tipo_prod = st.radio("Tipo de Producto", ["Bakugan", "Carta", "BakuCore"])
     nombre = st.text_input("Nombre / Descripción principal")
     
@@ -222,20 +253,18 @@ elif vista_admin == "➕ Agregar Producto":
     with c_pn: precio = st.number_input("Precio Normal ($)", min_value=0.0, step=10.0)
     with c_sn: stock = st.number_input("Stock Normal", min_value=0, step=1, value=1)
     
-    imagenes_subidas = st.file_uploader("📸 Sube fotos de la pieza NORMAL (Perfecta)", type=["png", "jpg", "jpeg"], accept_multiple_files=True)
+    imagenes_subidas = st.file_uploader("📸 Sube fotos de la pieza NORMAL", type=["png", "jpg", "jpeg"], accept_multiple_files=True)
     
     st.markdown("### 🟠 Piezas con Detalles (Desperfectos)")
-    con_detalle = st.checkbox("Activar versión con detalles / desperfectos para este producto")
+    con_detalle = st.checkbox("Activar versión con detalles / desperfectos")
     imagenes_detalle_subidas = []
     
     if con_detalle:
         c_pd, c_sd = st.columns(2)
         with c_pd: precio_detalle = st.number_input("Precio con Detalle ($)", min_value=0.0, step=10.0)
         with c_sd: stock_detalle = st.number_input("Stock con Detalle", min_value=0, step=1, value=1)
-        detalle_prod = st.text_input("⚠️ Describe el desperfecto (Ej. Raspón, falta pintura, sin resorte)")
-        
-        # AQUÍ ESTÁ EL SEGUNDO CARGADOR DE IMÁGENES SOLO PARA DETALLES
-        imagenes_detalle_subidas = st.file_uploader("📸 Sube fotos SOLO mostrando el DETALLE o desperfecto", type=["png", "jpg", "jpeg"], accept_multiple_files=True)
+        detalle_prod = st.text_input("⚠️ Describe el desperfecto")
+        imagenes_detalle_subidas = st.file_uploader("📸 Sube fotos SOLO mostrando el DETALLE", type=["png", "jpg", "jpeg"], accept_multiple_files=True)
     else:
         precio_detalle, stock_detalle, detalle_prod = 0.0, 0, ""
     
@@ -244,15 +273,13 @@ elif vista_admin == "➕ Agregar Producto":
             lista_imagenes_b64 = [comprimir_imagen(img) for img in imagenes_subidas[:6]] if imagenes_subidas else []
             lista_imagenes_detalle_b64 = [comprimir_imagen(img) for img in imagenes_detalle_subidas[:6]] if imagenes_detalle_subidas else []
             
-            # Si activó detalle pero no subió fotos específicas del detalle, reutiliza las fotos normales
             if con_detalle and not lista_imagenes_detalle_b64:
                 lista_imagenes_detalle_b64 = lista_imagenes_b64
                 
             nuevo_prod = {
                 "tipo": tipo_prod, "nombre": nombre, "precio": precio, "stock": stock,
                 "precio_detalle": precio_detalle, "stock_detalle": stock_detalle, "detalle": detalle_prod,
-                "imagenes_b64": lista_imagenes_b64,
-                "imagenes_detalle_b64": lista_imagenes_detalle_b64
+                "imagenes_b64": lista_imagenes_b64, "imagenes_detalle_b64": lista_imagenes_detalle_b64
             }
             if tipo_prod == "Bakugan": nuevo_prod["atributo"] = atributo_form
             elif tipo_prod == "Carta": nuevo_prod["material"] = material_form
@@ -262,14 +289,14 @@ elif vista_admin == "➕ Agregar Producto":
             st.success(f"¡{nombre} subido con éxito!")
             st.rerun() 
         else:
-            st.error("Falta el nombre, subir al menos una foto (normal o de detalle), o asignar precio.")
+            st.error("Falta el nombre, subir foto o asignar precio.")
 
 elif vista_admin == "📋 Ver Apartados":
     st.title("📋 Registro de Clientes y Apartados")
     st.markdown("---")
     todos_los_apartados = list(col_apartados.find({}))
     if not todos_los_apartados:
-        st.info("No hay apartados activos en este momento.")
+        st.info("No hay apartados activos.")
     else:
         clientes_dict = {}
         for ap in todos_los_apartados:
@@ -289,13 +316,13 @@ elif vista_admin == "📋 Ver Apartados":
                 nombres_items.append(item['nombre_producto'])
                 st.write(f"- **{item['nombre_producto']}** (${precio_item}) _[Apartado: {fecha_str}]_")
             
-            st.markdown(f"**Total piezas a cobrar:** <span style='color:#2ecc71; font-size:1.2em;'>${total_cliente}</span>", unsafe_allow_html=True)
+            st.markdown(f"**Total a cobrar:** <span style='color:#2ecc71; font-size:1.2em;'>${total_cliente}</span>", unsafe_allow_html=True)
             col_conf, col_canc = st.columns(2)
             with col_conf:
                 with st.expander("✅ Confirmar Pago"):
-                    cobro_envio = st.number_input("Dinero extra cliente (Envío) $", min_value=0.0, step=10.0, key=f"cobro_{tel}")
-                    gastos = st.number_input("Costo de la guía (Paquetería) $", min_value=0.0, step=10.0, key=f"gasto_{tel}")
-                    obs = st.text_input("Observaciones", key=f"obs_{tel}")
+                    cobro_envio = st.number_input("Cobro Envío $", min_value=0.0, step=10.0, key=f"cobro_{tel}")
+                    gastos = st.number_input("Costo Guía $", min_value=0.0, step=10.0, key=f"gasto_{tel}")
+                    obs = st.text_input("Obs", key=f"obs_{tel}")
                     if st.button("Procesar Venta", key=f"btn_venta_{tel}"):
                         col_ventas.insert_one({
                             "cliente": nombre_cliente, "telefono": tel, "productos": nombres_items,
@@ -313,13 +340,13 @@ elif vista_admin == "📋 Ver Apartados":
                             campo = doc.get("campo_stock", "stock")
                             col_productos.update_one({"_id": doc["producto_id"]}, {"$inc": {campo: 1}})
                             col_apartados.delete_one({"_id": doc["_id"]})
-                        st.success("¡Pedido cancelado y stock devuelto!")
+                        st.success("¡Cancelado!")
                         st.rerun()
             st.markdown("</div>", unsafe_allow_html=True)
 
 else:
     # --- VISTA DEL CATÁLOGO ---
-    es_modo_admin_catalogo = admin_autenticado and vista_admin == "Ver Catálogo"
+    es_modo_admin_catalogo = st.session_state.admin_autenticado and vista_admin == "Ver Catálogo"
     
     if es_modo_admin_catalogo:
         st.title("🛠️ Administrar Catálogo e Inventario")
@@ -327,24 +354,25 @@ else:
     else:
         col_tit, col_busc, col_cart = st.columns([1.5, 2, 1.5])
         with col_tit: st.markdown("### 🔥 Catálogo Libre")
-        with col_busc: busqueda_texto = st.text_input("Buscar", placeholder="🔍 ¿Qué estás buscando?", label_visibility="collapsed")
+        with col_busc: busqueda_texto = st.text_input("Buscar", placeholder="🔍 Buscar...", label_visibility="collapsed")
         with col_cart:
             cantidad_carrito = len(st.session_state.carrito)
             total_carrito = sum(item['precio'] for item in st.session_state.carrito)
             with st.popover(f"🛒 Carrito ({cantidad_carrito}) - ${total_carrito}", use_container_width=True):
                 if 'wa_link' in st.session_state:
-                    st.success("✅ ¡Tus piezas han sido apartadas!")
+                    st.success("✅ ¡Piezas apartadas!")
                     st.markdown(f"[**📲 HAZ CLIC AQUÍ PARA AVISARME POR WHATSAPP**]({st.session_state.wa_link})")
                     if st.button("Cerrar Aviso", use_container_width=True):
                         del st.session_state['wa_link']
                         st.rerun()
-                st.markdown("#### Resumen de tu pedido")
+                st.markdown("#### Resumen:")
                 if cantidad_carrito > 0:
                     for i, item in enumerate(st.session_state.carrito):
                         c1, c2 = st.columns([4, 1])
                         c1.markdown(f"<span style='font-size:0.9em;'>{item['nombre']} - **${item['precio']}**</span>", unsafe_allow_html=True)
                         if c2.button("❌", key=f"del_cart_{i}_{item['_id']}"):
                             st.session_state.carrito.pop(i)
+                            guardar_carrito() 
                             st.rerun()
                     st.markdown("---")
                     st.markdown(f"**Total a pagar: ${total_carrito}**")
@@ -353,6 +381,7 @@ else:
                     
                     if st.button("Confirmar Apartado", use_container_width=True, type="primary"):
                         if nom and tel:
+                            # 1. Guardar en Base de Datos de apartados
                             for prod_cart in st.session_state.carrito:
                                 db_prod = col_productos.find_one({"_id": prod_cart["_id"]})
                                 campo_stock = "stock"
@@ -365,16 +394,24 @@ else:
                                     "fecha_apartado": datetime.now(), "campo_stock": campo_stock
                                 })
                                 col_productos.update_one({"_id": prod_cart["_id"]}, {"$inc": {campo_stock: -1}})
-                            texto_wa = f"Hola, acabo de apartar {cantidad_carrito} piezas por un total de ${total_carrito}. Mi nombre es {nom}."
-                            st.session_state.wa_link = f"https://wa.me/4462879839?text={texto_wa.replace(' ', '%20')}"
+                            
+                            # 2. CONSTRUIR EL MENSAJE DETALLADO DE WHATSAPP (Codificado para URLs)
+                            texto_crudo = f"Hola, soy {nom}. Acabo de apartar {cantidad_carrito} piezas por un total de ${total_carrito}.\n\nMis piezas son:\n"
+                            for item in st.session_state.carrito:
+                                texto_crudo += f"👉 {item['nombre']} (${item['precio']})\n"
+                            
+                            texto_url = urllib.parse.quote(texto_crudo)
+                            st.session_state.wa_link = f"https://wa.me/4462879839?text={texto_url}"
+                            
+                            # 3. Vaciar carrito
                             st.session_state.carrito = [] 
+                            guardar_carrito()
                             st.rerun()
-                        else: st.warning("⚠️ Escribe tu nombre y WhatsApp.")
-                else: st.info("Tu carrito está vacío.")
+                        else: st.warning("⚠️ Faltan datos.")
+                else: st.info("Carrito vacío.")
 
     st.markdown("---")
 
-    # --- LÓGICA DE BÚSQUEDA Y FILTRADO INTELIGENTE MULTIVARIANTE ---
     query_base = {}
     if busqueda_texto: query_base["nombre"] = {"$regex": busqueda_texto, "$options": "i"}
 
@@ -412,32 +449,25 @@ else:
             else:
                 if stock_normal > 0: productos_filtrados.append(prod)
 
-    # =================================================================
-    # MAGIA DE ALEATORIEDAD APLICADA AL CATÁLOGO (CLIENTES Y ADMIN)
-    # =================================================================
+    # ---------------- APLICAR ALEATORIEDAD CON SEMILLA ----------------
     rng = random.Random(st.session_state.rand_seed)
     rng.shuffle(productos_filtrados)
 
     if not productos_filtrados:
-        st.info("No encontramos ninguna pieza con estos filtros.")
+        st.info("No encontramos piezas.")
     else:
         cols = st.columns(3)
         for index, prod in enumerate(productos_filtrados):
             with cols[index % 3]:
                 st.markdown(f"### {prod['nombre']}")
                 
-                # --- CEREBRO DIVISOR DE FOTOS ---
-                # Si el cliente está viendo la pestaña de detalles, mostramos SÓLO las fotos con desperfectos.
-                # Si no, mostramos las perfectas.
                 if tipo_busqueda == "Piezas / Detalles 🛠️":
                     imagenes_del_producto = prod.get("imagenes_detalle_b64", prod.get("imagenes_b64", []))
                 else:
                     imagenes_del_producto = prod.get("imagenes_b64", [])
-                    # Si no subió fotos perfectas (solo detalle), usamos las de detalle como plan B
                     if not imagenes_del_producto:
                         imagenes_del_producto = prod.get("imagenes_detalle_b64", [])
                         
-                # Adaptación para piezas súper viejas
                 if not imagenes_del_producto and "imagen_b64" in prod: 
                     imagenes_del_producto = [prod["imagen_b64"]]
                 
@@ -462,25 +492,23 @@ else:
                     precio_normal = 0.0
                 
                 tipo_real = prod.get("tipo", "Bakugan")
-                if tipo_real == "Bakugan" or "atributo" in prod: 
-                    st.write(f"**Atributo:** {prod.get('atributo', 'N/A')}")
-                elif tipo_real == "Carta": 
-                    st.write(f"**Material:** {prod.get('material', 'N/A')}")
-                elif tipo_real == "BakuCore": 
-                    st.write(f"**Símbolo:** {prod.get('simbolo', 'N/A')}")
+                if tipo_real == "Bakugan" or "atributo" in prod: st.write(f"**Atributo:** {prod.get('atributo', 'N/A')}")
+                elif tipo_real == "Carta": st.write(f"**Material:** {prod.get('material', 'N/A')}")
+                elif tipo_real == "BakuCore": st.write(f"**Símbolo:** {prod.get('simbolo', 'N/A')}")
                 
                 if not es_modo_admin_catalogo:
                     en_carrito_normal = sum(1 for item in st.session_state.carrito if item["_id"] == prod["_id"] and item.get("variante") == "normal")
                     en_carrito_detalle = sum(1 for item in st.session_state.carrito if item["_id"] == prod["_id"] and item.get("variante") == "detalle")
                     
                     if stock_normal == 0 and stock_detalle == 0:
-                        st.markdown("🚨 **ESTADO:** <span style='color:#e74c3c; font-weight:bold;'>AGOTADO (0)</span>", unsafe_allow_html=True)
+                        st.markdown("🚨 **AGOTADO**", unsafe_allow_html=True)
                     else:
                         if stock_normal > 0:
                             st.write(f"🟢 **Perfecta:** ${precio_normal} (Disp: {stock_normal})")
                             if (stock_normal - en_carrito_normal) > 0:
-                                if st.button(f"🛒 Añadir Normal (${precio_normal})", key=f"add_n_{prod['_id']}", use_container_width=True):
+                                if st.button(f"🛒 Añadir Normal", key=f"add_n_{prod['_id']}", use_container_width=True):
                                     st.session_state.carrito.append({"_id": prod["_id"], "nombre": f"{prod['nombre']}", "precio": precio_normal, "variante": "normal"})
+                                    guardar_carrito() 
                                     st.rerun()
                             else: st.button("✅ En carrito (Máx)", disabled=True, key=f"max_n_{prod['_id']}", use_container_width=True)
                             
@@ -488,27 +516,27 @@ else:
                             st.markdown(f"<span style='color:#f39c12; font-size: 0.9em;'>⚠️ **Detalle:** {texto_detalle}</span>", unsafe_allow_html=True)
                             st.write(f"🟠 **C/Detalle:** ${precio_detalle} (Disp: {stock_detalle})")
                             if (stock_detalle - en_carrito_detalle) > 0:
-                                if st.button(f"🛒 Añadir c/Detalle (${precio_detalle})", key=f"add_d_{prod['_id']}", use_container_width=True):
+                                if st.button(f"🛒 Añadir c/Detalle", key=f"add_d_{prod['_id']}", use_container_width=True):
                                     st.session_state.carrito.append({"_id": prod["_id"], "nombre": f"{prod['nombre']} (Detalle)", "precio": precio_detalle, "variante": "detalle"})
+                                    guardar_carrito() 
                                     st.rerun()
-                            else: st.button("✅ Detalle en carrito (Máx)", disabled=True, key=f"max_d_{prod['_id']}", use_container_width=True)
+                            else: st.button("✅ Detalle en carrito", disabled=True, key=f"max_d_{prod['_id']}", use_container_width=True)
 
                 if es_modo_admin_catalogo:
                     st.markdown("---")
-                    with st.expander("✏️ Editar Precios y Stock"):
-                        np = st.number_input("Precio Normal ($)", value=float(precio_normal), step=10.0, key=f"epn_{prod['_id']}")
-                        ns = st.number_input("Stock Normal", value=int(stock_normal), step=1, key=f"esn_{prod['_id']}")
-                        ndp = st.number_input("Precio Detalle ($)", value=float(precio_detalle), step=10.0, key=f"epd_{prod['_id']}")
-                        nds = st.number_input("Stock Detalle", value=int(stock_detalle), step=1, key=f"esd_{prod['_id']}")
-                        ndtxt = st.text_input("Desc. Detalle", value=texto_detalle, key=f"etxt_{prod['_id']}")
+                    with st.expander("✏️ Editar"):
+                        np = st.number_input("Precio N.", value=float(precio_normal), step=10.0, key=f"epn_{prod['_id']}")
+                        ns = st.number_input("Stock N.", value=int(stock_normal), step=1, key=f"esn_{prod['_id']}")
+                        ndp = st.number_input("Precio D.", value=float(precio_detalle), step=10.0, key=f"epd_{prod['_id']}")
+                        nds = st.number_input("Stock D.", value=int(stock_detalle), step=1, key=f"esd_{prod['_id']}")
+                        ndtxt = st.text_input("Detalle", value=texto_detalle, key=f"etxt_{prod['_id']}")
                         
-                        if st.button("💾 Guardar Cambios", key=f"save_{prod['_id']}", use_container_width=True):
+                        if st.button("💾 Guardar", key=f"save_{prod['_id']}", use_container_width=True):
                             col_productos.update_one({"_id": prod["_id"]}, {"$set": {
                                 "precio": np, "stock": ns, "precio_detalle": ndp, "stock_detalle": nds, "detalle": ndtxt
                             }})
-                            st.success("¡Actualizado!")
                             st.rerun()
                             
-                    if st.button("🗑️ Eliminar Producto", key=f"del_{prod['_id']}", use_container_width=True):
+                    if st.button("🗑️ Eliminar", key=f"del_{prod['_id']}", use_container_width=True):
                         col_productos.delete_one({"_id": prod["_id"]})
                         st.rerun()
