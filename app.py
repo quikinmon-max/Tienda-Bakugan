@@ -33,12 +33,8 @@ col_ventas = db["ventas"]
 # ---------------- MOTOR DE COMPRESIÓN DE IMÁGENES ----------------
 def comprimir_imagen(img_file):
     img = Image.open(img_file)
-    # Endereza la foto si viene rotada del celular
     img = ImageOps.exif_transpose(img)
-    
-    if img.mode in ("RGBA", "P"):
-        img = img.convert("RGB")
-    
+    if img.mode in ("RGBA", "P"): img = img.convert("RGB")
     img.thumbnail((800, 800))
     buffer = io.BytesIO()
     img.save(buffer, format="JPEG", quality=70)
@@ -47,17 +43,12 @@ def comprimir_imagen(img_file):
 # ---------------- FUNCIÓN DE AMPLIACIÓN DE FOTOS (MODAL CON CARRETE) ----------------
 @st.dialog("🔍 Modo Detalle")
 def abrir_zoom(nombre_prod, imagenes_b64):
-    """Abre una ventana sobrepuesta con el carrete en tamaño gigante"""
     st.markdown(f"### {nombre_prod}")
-    
     html_galeria = '<div class="galeria-container">'
     for img_b64 in imagenes_b64:
-        # Usamos una clase CSS distinta para que aquí se vea gigante y sin recortes
         html_galeria += f'<img src="data:image/jpeg;base64,{img_b64}" class="galeria-ampliada-img">'
     html_galeria += '</div>'
-    
     st.markdown(html_galeria, unsafe_allow_html=True)
-    
     if len(imagenes_b64) > 1:
         st.markdown("<p style='text-align: center; color: #aaa; font-size: 14px; margin-top: 10px;'>👉 Desliza para ver más</p>", unsafe_allow_html=True)
 
@@ -75,96 +66,46 @@ css_global = f"""
     background-repeat: no-repeat;
     background-attachment: fixed;
 }}
-.stApp > header {{
-    background-color: transparent;
-}}
+.stApp > header {{ background-color: transparent; }}
 .block-container {{
     background-color: rgba(14, 17, 23, 0.85); 
-    padding-top: 5rem !important;
-    padding-right: 2rem;
-    padding-bottom: 2rem;
-    padding-left: 2rem;
-    margin-top: 2rem;
-    border-radius: 15px;
+    padding-top: 5rem !important; padding-right: 2rem; padding-bottom: 2rem; padding-left: 2rem;
+    margin-top: 2rem; border-radius: 15px;
 }}
 .tarjeta-cliente {{
     background-color: rgba(255, 255, 255, 0.1);
-    padding: 15px;
-    border-radius: 10px;
-    margin-bottom: 10px;
-    border: 1px solid #444;
+    padding: 15px; border-radius: 10px; margin-bottom: 10px; border: 1px solid #444;
 }}
-
-/* =========================================================
-   DISEÑO DE GALERÍA: LIMPIO, CUADRADO Y DESLIZABLE
-   ========================================================= */
 .galeria-container {{
-    display: flex;
-    overflow-x: auto;
-    scroll-snap-type: x mandatory;
-    gap: 0;
-    -ms-overflow-style: none;  
-    scrollbar-width: none;  
-    border-radius: 8px;
-    margin-bottom: 5px;
+    display: flex; overflow-x: auto; scroll-snap-type: x mandatory; gap: 0;
+    -ms-overflow-style: none; scrollbar-width: none; border-radius: 8px; margin-bottom: 5px;
 }}
-.galeria-container::-webkit-scrollbar {{
-    display: none; 
-}}
-
-/* Imagen en el catálogo normal (cuadrada y rellena) */
+.galeria-container::-webkit-scrollbar {{ display: none; }}
 .galeria-img {{
-    scroll-snap-align: center;
-    flex: 0 0 100%;
-    width: 100%;
-    aspect-ratio: 1 / 1 !important; 
-    object-fit: cover !important; 
-    border-radius: 8px;
-    background-color: transparent; 
+    scroll-snap-align: center; flex: 0 0 100%; width: 100%; aspect-ratio: 1 / 1 !important; 
+    object-fit: cover !important; border-radius: 8px; background-color: transparent; 
 }}
-
-/* Imagen al darle ZOOM (Gigante y sin recortes) */
 .galeria-ampliada-img {{
-    scroll-snap-align: center;
-    flex: 0 0 100%;
-    width: 100%;
-    max-height: 65vh; /* Ocupa el 65% de la pantalla en alto */
-    object-fit: contain !important; /* No corta la foto para ver los detalles */
-    border-radius: 8px;
-    background-color: transparent; 
+    scroll-snap-align: center; flex: 0 0 100%; width: 100%; max-height: 65vh; 
+    object-fit: contain !important; border-radius: 8px; background-color: transparent; 
 }}
-
-/* AJUSTES RESPONSIVOS PARA MÓVILES Y iPHONE */
 @media (max-width: 768px) {{
-    .block-container {{
-        padding-top: 3rem !important; 
-        margin-top: 0rem;
-    }}
-    .stTextInput input {{
-        font-size: 16px !important;
-        padding: 0.6rem !important;
-    }}
-    .stButton > button {{
-        font-size: 16px !important;
-        padding: 0.5rem 1rem !important;
-        min-height: 2.8rem !important;
-    }}
-    div[data-testid="stPopover"] > button {{
-        font-size: 16px !important;
-        padding: 0.6rem 1rem !important;
-        min-height: 2.8rem !important;
-    }}
+    .block-container {{ padding-top: 3rem !important; margin-top: 0rem; }}
+    .stTextInput input {{ font-size: 16px !important; padding: 0.6rem !important; }}
+    .stButton > button {{ font-size: 16px !important; padding: 0.5rem 1rem !important; min-height: 2.8rem !important; }}
+    div[data-testid="stPopover"] > button {{ font-size: 16px !important; padding: 0.6rem 1rem !important; min-height: 2.8rem !important; }}
 }}
 </style>
 """
 st.markdown(css_global, unsafe_allow_html=True)
 
-# ---------------- LÓGICA DE CADUCIDAD (3 DÍAS) ----------------
+# ---------------- LÓGICA DE CADUCIDAD ----------------
 def limpiar_apartados_vencidos():
     limite_fecha = datetime.now() - timedelta(days=3)
     vencidos = col_apartados.find({"fecha_apartado": {"$lt": limite_fecha}})
     for doc in vencidos:
-        col_productos.update_one({"_id": doc["producto_id"]}, {"$inc": {"stock": 1}})
+        campo = doc.get("campo_stock", "stock")
+        col_productos.update_one({"_id": doc["producto_id"]}, {"$inc": {campo: 1}})
         col_apartados.delete_one({"_id": doc["_id"]})
 
 limpiar_apartados_vencidos()
@@ -179,42 +120,18 @@ simbolos_core = ["Todos", "Fist ✊", "Flaming Fist 🔥✊", "Shield 🛡️", 
 # =====================================================================
 
 if logo_b64:
-    logo_css = f"""
-    <style>
-    .logo-celular {{
-        width: 100%;
-        border-radius: 8px;
-        margin-bottom: 10px;
-    }}
-    @media (max-width: 768px) {{
-        .logo-celular {{
-            width: 45%; 
-            margin-left: auto;
-            margin-right: auto;
-            display: block;
-        }}
-    }}
-    </style>
-    <img src="data:image/png;base64,{logo_b64}" class="logo-celular">
-    """
-    st.sidebar.markdown(logo_css, unsafe_allow_html=True)
+    st.sidebar.markdown(f'<style>.logo-celular {{ width: 100%; border-radius: 8px; margin-bottom: 10px; }} @media (max-width: 768px) {{ .logo-celular {{ width: 45%; margin-left: auto; margin-right: auto; display: block; }} }} </style> <img src="data:image/png;base64,{logo_b64}" class="logo-celular">', unsafe_allow_html=True)
 else:
     st.sidebar.markdown("### 🛒 Mi Tienda")
 
-# --- 1. FILTROS AHORA VAN ARRIBA ---
 st.sidebar.header("Filtros Avanzados")
 tipo_busqueda = st.sidebar.selectbox("¿Qué buscas?", ["Bakugans 🔥", "Cartas 🃏", "BakuCores 🛑", "Piezas / Detalles 🛠️"])
 
-if tipo_busqueda == "Bakugans 🔥":
-    sub_filtro = st.sidebar.selectbox("Filtra por Atributo", categorias)
-elif tipo_busqueda == "Cartas 🃏":
-    sub_filtro = st.sidebar.selectbox("Filtra por Material", materiales)
-elif tipo_busqueda == "BakuCores 🛑":
-    sub_filtro = st.sidebar.selectbox("Filtra por Símbolo", simbolos_core)
-else:
-    sub_filtro = "Todos"
+if tipo_busqueda == "Bakugans 🔥": sub_filtro = st.sidebar.selectbox("Filtra por Atributo", categorias)
+elif tipo_busqueda == "Cartas 🃏": sub_filtro = st.sidebar.selectbox("Filtra por Material", materiales)
+elif tipo_busqueda == "BakuCores 🛑": sub_filtro = st.sidebar.selectbox("Filtra por Símbolo", simbolos_core)
+else: sub_filtro = "Todos"
 
-# --- 2. EL CANDADO INVISIBLE Y AUTENTICACIÓN AHORA VAN ABAJO ---
 es_admin_url = st.query_params.get("jefe") == "1"
 vista_admin = "Catálogo" 
 admin_autenticado = False
@@ -225,19 +142,9 @@ if es_admin_url:
     if admin_input == st.secrets["ADMIN_PASS"]:
         admin_autenticado = True
         st.sidebar.success("¡Bienvenido, jefe!")
-        vista_admin = st.sidebar.radio("Opciones de Administrador", [
-            "Ver Catálogo", 
-            "➕ Agregar Producto", 
-            "📋 Ver Apartados", 
-            "📊 Finanzas y Ventas", 
-            "🎨 Personalizar Página"
-        ])
-    elif admin_input != "":
-        st.sidebar.error("Contraseña incorrecta.")
+        vista_admin = st.sidebar.radio("Opciones de Administrador", ["Ver Catálogo", "➕ Agregar Producto", "📋 Ver Apartados", "📊 Finanzas y Ventas", "🎨 Personalizar Página"])
 
-# --- ESPACIO INVISIBLE PARA QUE EL MENÚ NO SE CORTE EN PC NI CELULAR ---
 st.sidebar.markdown("<div style='height: 400px;'></div>", unsafe_allow_html=True)
-
 
 # =====================================================================
 # ======================== PANTALLA PRINCIPAL =========================
@@ -246,7 +153,6 @@ st.sidebar.markdown("<div style='height: 400px;'></div>", unsafe_allow_html=True
 if vista_admin == "📊 Finanzas y Ventas":
     st.title("📊 Panel de Analítica Financiera")
     st.markdown("Revisa el rendimiento de tu tienda. KPIs calculados al instante.")
-    
     ventas = list(col_ventas.find({}))
     if not ventas:
         st.info("Aún no tienes ventas registradas para analizar.")
@@ -255,111 +161,84 @@ if vista_admin == "📊 Finanzas y Ventas":
         def filtrar_por_fecha(dias):
             fecha_limite = hoy - timedelta(days=dias)
             return [v for v in ventas if v["fecha_venta"] >= fecha_limite]
-            
         ventas_hoy = [v for v in ventas if v["fecha_venta"].date() == hoy.date()]
         ventas_semana = filtrar_por_fecha(7)
         ventas_mes = filtrar_por_fecha(30)
         ventas_anio = filtrar_por_fecha(365)
-        
         def calcular_metricas(lista_ventas):
             ingresos = sum(v.get("precio_total", 0) for v in lista_ventas)
             gastos = sum(v.get("gasto_envio", 0) for v in lista_ventas)
-            ganancia = ingresos - gastos
-            return ingresos, gastos, ganancia
-            
+            return ingresos, gastos, ingresos - gastos
         tab1, tab2, tab3, tab4 = st.tabs(["Hoy", "Últimos 7 Días", "Últimos 30 Días", "Este Año"])
         datos_tabs = [(tab1, ventas_hoy), (tab2, ventas_semana), (tab3, ventas_mes), (tab4, ventas_anio)]
-        
         for tab, datos_rango in datos_tabs:
             with tab:
                 ing, gas, gan = calcular_metricas(datos_rango)
                 col1, col2, col3, col4 = st.columns(4)
-                col1.metric("📦 Piezas Vendidas", len(datos_rango))
-                col2.metric("💸 Ingresos Brutos", f"${ing:,.2f}")
-                col3.metric("📉 Gastos (Guías)", f"${gas:,.2f}")
-                col4.metric("💰 Ganancia Neta", f"${gan:,.2f}")
-                
+                col1.metric("📦 Vendidas", len(datos_rango))
+                col2.metric("💸 Brutos", f"${ing:,.2f}")
+                col3.metric("📉 Gastos", f"${gas:,.2f}")
+                col4.metric("💰 Neta", f"${gan:,.2f}")
         st.markdown("---")
         st.subheader("📝 Historial Detallado de Ventas")
         for v in reversed(ventas):
-            neta = v.get('precio_total', 0) - v.get('gasto_envio', 0)
-            cobro_envio = v.get('ingreso_envio', 0)
-            gasto_envio = v.get('gasto_envio', 0)
-            fecha_str = v['fecha_venta'].strftime('%d/%m/%Y')
-            obs = v.get('observaciones', 'Ninguna')
-            
-            tarjeta_venta = f"""
-            <div style="background-color: rgba(255, 255, 255, 0.05); padding: 12px; border-radius: 8px; margin-bottom: 10px; border-left: 5px solid #2ecc71; border-top: 1px solid rgba(255,255,255,0.1); border-right: 1px solid rgba(255,255,255,0.1); border-bottom: 1px solid rgba(255,255,255,0.1);">
-                <div style="font-size: 14px; margin-bottom: 5px;">
-                    <span style="color: #aaa;">📅 {fecha_str}</span> &nbsp;|&nbsp; 👤 <b>{v['cliente']}</b>
-                </div>
-                <div style="font-size: 15px; margin-bottom: 5px;">
-                    💰 <b>Ganancia Neta: <span style="color: #2ecc71;">${neta:,.2f}</span></b> &nbsp;|&nbsp; 
-                    📦 Cobro Envío: <span style="color: #f1c40f;">${cobro_envio:,.2f}</span> &nbsp;|&nbsp; 
-                    📉 Costo Guía: <span style="color: #e74c3c;">${gasto_envio:,.2f}</span>
-                </div>
-                <div style="font-size: 13px; color: #ccc;">
-                    📝 <i>Obs: {obs}</i>
-                </div>
-            </div>
-            """
-            st.markdown(tarjeta_venta, unsafe_allow_html=True)
+            neta, cobro_envio, gasto_envio = v.get('precio_total', 0) - v.get('gasto_envio', 0), v.get('ingreso_envio', 0), v.get('gasto_envio', 0)
+            fecha_str, obs = v['fecha_venta'].strftime('%d/%m/%Y'), v.get('observaciones', 'Ninguna')
+            st.markdown(f'<div class="tarjeta-cliente"><div style="font-size: 14px; margin-bottom: 5px;"><span style="color: #aaa;">📅 {fecha_str}</span> &nbsp;|&nbsp; 👤 <b>{v["cliente"]}</b></div><div style="font-size: 15px; margin-bottom: 5px;">💰 <b>Ganancia Neta: <span style="color: #2ecc71;">${neta:,.2f}</span></b> &nbsp;|&nbsp; 📦 Cobro Envío: <span style="color: #f1c40f;">${cobro_envio:,.2f}</span> &nbsp;|&nbsp; 📉 Costo Guía: <span style="color: #e74c3c;">${gasto_envio:,.2f}</span></div><div style="font-size: 13px; color: #ccc;">📝 <i>Obs: {obs}</i></div></div>', unsafe_allow_html=True)
 
 elif vista_admin == "🎨 Personalizar Página":
     st.title("🎨 Personaliza el Diseño de tu Tienda")
-    st.markdown("---")
     with st.form("form_personalizacion"):
         nuevo_fondo = st.file_uploader("Fondo de Pantalla HD (Recomendado: Horizontal)", type=["png", "jpg", "jpeg"])
         nuevo_logo = st.file_uploader("Logo del Menú Lateral", type=["png", "jpg", "jpeg"])
         if st.form_submit_button("Guardar Diseño"):
             update_data = {}
-            if nuevo_fondo:
-                update_data["fondo_b64"] = base64.b64encode(nuevo_fondo.getvalue()).decode("utf-8")
-            if nuevo_logo:
-                update_data["logo_b64"] = base64.b64encode(nuevo_logo.getvalue()).decode("utf-8")
+            if nuevo_fondo: update_data["fondo_b64"] = base64.b64encode(nuevo_fondo.getvalue()).decode("utf-8")
+            if nuevo_logo: update_data["logo_b64"] = base64.b64encode(nuevo_logo.getvalue()).decode("utf-8")
             if update_data:
                 col_config.update_one({"_id": "sitio_prefs"}, {"$set": update_data}, upsert=True)
                 st.success("¡Diseño actualizado! Recarga la página.")
                 st.rerun()
 
 elif vista_admin == "➕ Agregar Producto":
-    st.title("🛠️ Agregar nuevo producto al Catálogo")
+    st.title("🛠️ Agregar nuevo producto Multivariante")
+    st.markdown("Ahora puedes subir la versión normal y la de detalles en la misma publicación.")
     st.markdown("---")
     tipo_prod = st.radio("Tipo de Producto", ["Bakugan", "Carta", "BakuCore"])
     nombre = st.text_input("Nombre / Descripción principal")
     
-    detalle_prod = st.text_input("⚠️ Detalles o desperfectos (Opcional, déjalo vacío si está perfecto)")
-    st.caption("*Si escribes algo aquí, el producto se moverá a la pestaña de 'Piezas / Detalles 🛠️' automáticamente.*")
-    
     col1, col2, col3 = st.columns(3)
-    with col1:
-        atributo_form = st.selectbox("Atributo", categorias[1:], disabled=(tipo_prod != "Bakugan")) 
-    with col2:
-        material_form = st.selectbox("Material", materiales[1:], disabled=(tipo_prod != "Carta"))
-    with col3:
-        simbolo_form = st.selectbox("Símbolo", simbolos_core[1:], disabled=(tipo_prod != "BakuCore"))
-        
-    precio = st.number_input("Precio ($)", min_value=0.0, step=10.0)
-    stock = st.number_input("Cantidad disponible", min_value=1, step=1)
+    with col1: atributo_form = st.selectbox("Atributo", categorias[1:], disabled=(tipo_prod != "Bakugan")) 
+    with col2: material_form = st.selectbox("Material", materiales[1:], disabled=(tipo_prod != "Carta"))
+    with col3: simbolo_form = st.selectbox("Símbolo", simbolos_core[1:], disabled=(tipo_prod != "BakuCore"))
+    
+    st.markdown("### 🟢 Piezas Normales (Perfectas)")
+    c_pn, c_sn = st.columns(2)
+    with c_pn: precio = st.number_input("Precio Normal ($)", min_value=0.0, step=10.0)
+    with c_sn: stock = st.number_input("Stock Normal", min_value=0, step=1, value=1)
+    
+    st.markdown("### 🟠 Piezas con Detalles (Desperfectos)")
+    con_detalle = st.checkbox("Activar versión con detalles / desperfectos para este producto")
+    if con_detalle:
+        c_pd, c_sd = st.columns(2)
+        with c_pd: precio_detalle = st.number_input("Precio con Detalle ($)", min_value=0.0, step=10.0)
+        with c_sd: stock_detalle = st.number_input("Stock con Detalle", min_value=0, step=1, value=1)
+        detalle_prod = st.text_input("⚠️ Describe el desperfecto (Ej. Raspón, falta pintura, sin resorte)")
+    else:
+        precio_detalle, stock_detalle, detalle_prod = 0.0, 0, ""
     
     imagenes_subidas = st.file_uploader("Sube hasta 6 fotos (Frontal, trasera...)", type=["png", "jpg", "jpeg"], accept_multiple_files=True)
     
     if st.button("Subir Producto al Catálogo"):
-        if nombre and imagenes_subidas and precio > 0:
-            if len(imagenes_subidas) > 6:
-                st.warning("Se guardarán solo las primeras 6 fotos.")
-                imagenes_subidas = imagenes_subidas[:6]
-                
+        if nombre and imagenes_subidas and (precio > 0 or precio_detalle > 0):
+            imagenes_subidas = imagenes_subidas[:6]
             lista_imagenes_b64 = [comprimir_imagen(img) for img in imagenes_subidas]
             
             nuevo_prod = {
-                "tipo": tipo_prod, "nombre": nombre, "precio": precio,
-                "stock": stock, "imagenes_b64": lista_imagenes_b64
+                "tipo": tipo_prod, "nombre": nombre, "precio": precio, "stock": stock,
+                "precio_detalle": precio_detalle, "stock_detalle": stock_detalle, "detalle": detalle_prod,
+                "imagenes_b64": lista_imagenes_b64
             }
-            
-            if detalle_prod.strip():
-                nuevo_prod["detalle"] = detalle_prod.strip()
-                
             if tipo_prod == "Bakugan": nuevo_prod["atributo"] = atributo_form
             elif tipo_prod == "Carta": nuevo_prod["material"] = material_form
             else: nuevo_prod["simbolo"] = simbolo_form
@@ -368,7 +247,7 @@ elif vista_admin == "➕ Agregar Producto":
             st.success(f"¡{nombre} subido con éxito!")
             st.rerun() 
         else:
-            st.error("Falta el nombre, al menos 1 imagen o el precio.")
+            st.error("Falta el nombre, imagen o asignar al menos un precio.")
 
 elif vista_admin == "📋 Ver Apartados":
     st.title("📋 Registro de Clientes y Apartados")
@@ -385,8 +264,7 @@ elif vista_admin == "📋 Ver Apartados":
         
         for tel, items in clientes_dict.items():
             nombre_cliente = items[0].get("comprador_nombre", "Desconocido")
-            st.markdown(f'<div class="tarjeta-cliente">', unsafe_allow_html=True)
-            st.markdown(f"#### 👤 {nombre_cliente} | 📞 WA: {tel}")
+            st.markdown(f'<div class="tarjeta-cliente"><h4>👤 {nombre_cliente} | 📞 WA: {tel}</h4>', unsafe_allow_html=True)
             total_cliente = 0
             nombres_items = []
             for item in items:
@@ -416,34 +294,28 @@ elif vista_admin == "📋 Ver Apartados":
             with col_canc:
                 with st.expander("🚫 Cancelar Pedido"):
                     if st.button("Confirmar Cancelación", key=f"btn_cancel_{tel}"):
-                        for item in items:
-                            col_productos.update_one({"_id": item["producto_id"]}, {"$inc": {"stock": 1}})
-                            col_apartados.delete_one({"_id": item["_id"]})
+                        for doc in items:
+                            campo = doc.get("campo_stock", "stock")
+                            col_productos.update_one({"_id": doc["producto_id"]}, {"$inc": {campo: 1}})
+                            col_apartados.delete_one({"_id": doc["_id"]})
                         st.success("¡Pedido cancelado y stock devuelto!")
                         st.rerun()
             st.markdown("</div>", unsafe_allow_html=True)
 
 else:
-    # --- VISTA DEL CATÁLOGO PÚBLICO Y ADMIN ---
+    # --- VISTA DEL CATÁLOGO ---
     es_modo_admin_catalogo = admin_autenticado and vista_admin == "Ver Catálogo"
     
     if es_modo_admin_catalogo:
         st.title("🛠️ Administrar Catálogo e Inventario")
-        busqueda_texto = st.text_input("🔍 Buscar pieza por nombre...", placeholder="Ej. Dragonoid, Pyrus...")
+        busqueda_texto = st.text_input("🔍 Buscar pieza por nombre...")
     else:
-        # --- CABECERA ESTILO MERCADOLIBRE (Solo Clientes) ---
         col_tit, col_busc, col_cart = st.columns([1.5, 2, 1.5])
-        
-        with col_tit:
-            st.markdown("### 🔥 Catálogo Libre")
-            
-        with col_busc:
-            busqueda_texto = st.text_input("Buscar", placeholder="🔍 ¿Qué estás buscando?", label_visibility="collapsed")
-            
+        with col_tit: st.markdown("### 🔥 Catálogo Libre")
+        with col_busc: busqueda_texto = st.text_input("Buscar", placeholder="🔍 ¿Qué estás buscando?", label_visibility="collapsed")
         with col_cart:
             cantidad_carrito = len(st.session_state.carrito)
             total_carrito = sum(item['precio'] for item in st.session_state.carrito)
-            
             with st.popover(f"🛒 Carrito ({cantidad_carrito}) - ${total_carrito}", use_container_width=True):
                 if 'wa_link' in st.session_state:
                     st.success("✅ ¡Tus piezas han sido apartadas!")
@@ -451,7 +323,6 @@ else:
                     if st.button("Cerrar Aviso", use_container_width=True):
                         del st.session_state['wa_link']
                         st.rerun()
-                
                 st.markdown("#### Resumen de tu pedido")
                 if cantidad_carrito > 0:
                     for i, item in enumerate(st.session_state.carrito):
@@ -460,7 +331,6 @@ else:
                         if c2.button("❌", key=f"del_cart_{i}_{item['_id']}"):
                             st.session_state.carrito.pop(i)
                             st.rerun()
-                    
                     st.markdown("---")
                     st.markdown(f"**Total a pagar: ${total_carrito}**")
                     nom = st.text_input("Tu Nombre", key="checkout_nom")
@@ -468,124 +338,145 @@ else:
                     
                     if st.button("Confirmar Apartado", use_container_width=True, type="primary"):
                         if nom and tel:
-                            for prod in st.session_state.carrito:
+                            for prod_cart in st.session_state.carrito:
+                                db_prod = col_productos.find_one({"_id": prod_cart["_id"]})
+                                campo_stock = "stock"
+                                if prod_cart.get("variante") == "detalle":
+                                    campo_stock = "stock_detalle" if "stock_detalle" in db_prod else "stock"
+                                    
                                 col_apartados.insert_one({
-                                    "producto_id": prod["_id"],
-                                    "nombre_producto": prod["nombre"],
-                                    "precio": prod["precio"],
-                                    "comprador_nombre": nom,
-                                    "comprador_telefono": tel,
-                                    "fecha_apartado": datetime.now()
+                                    "producto_id": prod_cart["_id"], "nombre_producto": prod_cart["nombre"],
+                                    "precio": prod_cart["precio"], "comprador_nombre": nom, "comprador_telefono": tel,
+                                    "fecha_apartado": datetime.now(), "campo_stock": campo_stock
                                 })
-                                col_productos.update_one({"_id": prod["_id"]}, {"$inc": {"stock": -1}})
-                            
+                                col_productos.update_one({"_id": prod_cart["_id"]}, {"$inc": {campo_stock: -1}})
                             texto_wa = f"Hola, acabo de apartar {cantidad_carrito} piezas por un total de ${total_carrito}. Mi nombre es {nom}."
                             st.session_state.wa_link = f"https://wa.me/4462879839?text={texto_wa.replace(' ', '%20')}"
                             st.session_state.carrito = [] 
                             st.rerun()
-                        else:
-                            st.warning("⚠️ Escribe tu nombre y WhatsApp para procesar.")
-                else:
-                    st.info("Tu carrito está vacío. ¡Empieza a llenarlo!")
+                        else: st.warning("⚠️ Escribe tu nombre y WhatsApp.")
+                else: st.info("Tu carrito está vacío.")
 
     st.markdown("---")
 
-    query = {}
-    if not es_modo_admin_catalogo:
-        query["stock"] = {"$gt": 0}
-
-    if busqueda_texto:
-        query["nombre"] = {"$regex": busqueda_texto, "$options": "i"}
+    # --- LÓGICA DE BÚSQUEDA Y FILTRADO INTELIGENTE MULTIVARIANTE ---
+    query_base = {}
+    if busqueda_texto: query_base["nombre"] = {"$regex": busqueda_texto, "$options": "i"}
 
     if tipo_busqueda == "Bakugans 🔥":
-        query["$or"] = [{"tipo": "Bakugan"}, {"tipo": {"$exists": False}}]
-        query["detalle"] = {"$in": [None, ""]} 
-        if sub_filtro != "Todos": query["atributo"] = sub_filtro
+        query_base["$or"] = [{"tipo": "Bakugan"}, {"tipo": {"$exists": False}}]
+        if sub_filtro != "Todos": query_base["atributo"] = sub_filtro
     elif tipo_busqueda == "Cartas 🃏":
-        query["tipo"] = "Carta"
-        query["detalle"] = {"$in": [None, ""]} 
-        if sub_filtro != "Todas": query["material"] = sub_filtro
+        query_base["tipo"] = "Carta"
+        if sub_filtro != "Todas": query_base["material"] = sub_filtro
     elif tipo_busqueda == "BakuCores 🛑": 
-        query["tipo"] = "BakuCore"
-        query["detalle"] = {"$in": [None, ""]} 
-        if sub_filtro != "Todos": query["simbolo"] = sub_filtro
-    elif tipo_busqueda == "Piezas / Detalles 🛠️":
-        query["detalle"] = {"$nin": [None, ""]}
+        query_base["tipo"] = "BakuCore"
+        if sub_filtro != "Todos": query_base["simbolo"] = sub_filtro
 
-    productos = list(col_productos.find(query))
+    productos_crudos = list(col_productos.find(query_base))
+    productos_filtrados = []
 
-    if not productos:
+    # Filtrar localmente para adaptar a las variables duales (Normal vs Detalle)
+    for prod in productos_crudos:
+        stock_normal = prod.get('stock', 0)
+        stock_detalle = prod.get('stock_detalle', 0)
+        texto_detalle = prod.get('detalle', "")
+        
+        # Corrección mágica para piezas viejas (solo detalle)
+        if texto_detalle and 'stock_detalle' not in prod:
+            stock_detalle = stock_normal
+            stock_normal = 0
+            
+        if es_modo_admin_catalogo:
+            if tipo_busqueda == "Piezas / Detalles 🛠️" and not texto_detalle: continue
+            if tipo_busqueda != "Piezas / Detalles 🛠️" and texto_detalle and stock_normal == 0 and stock_detalle > 0: continue
+            productos_filtrados.append(prod)
+        else:
+            if tipo_busqueda == "Piezas / Detalles 🛠️":
+                if texto_detalle and stock_detalle > 0: productos_filtrados.append(prod)
+            else:
+                if stock_normal > 0: productos_filtrados.append(prod)
+
+    if not productos_filtrados:
         st.info("No encontramos ninguna pieza con estos filtros.")
     else:
         cols = st.columns(3)
-        for index, prod in enumerate(productos):
-            col = cols[index % 3] 
-            with col:
+        for index, prod in enumerate(productos_filtrados):
+            with cols[index % 3]:
                 st.markdown(f"### {prod['nombre']}")
                 
                 imagenes_del_producto = prod.get("imagenes_b64", [])
-                if not imagenes_del_producto and "imagen_b64" in prod:
-                    imagenes_del_producto = [prod["imagen_b64"]]
+                if not imagenes_del_producto and "imagen_b64" in prod: imagenes_del_producto = [prod["imagen_b64"]]
                 
-                # ------ GALERÍA TRANSPARENTE CON BOTÓN DE AMPLIAR ------
                 if imagenes_del_producto:
                     html_galeria = '<div class="galeria-container">'
-                    for b64_img in imagenes_del_producto:
-                        html_galeria += f'<img src="data:image/jpeg;base64,{b64_img}" class="galeria-img">'
+                    for b64_img in imagenes_del_producto: html_galeria += f'<img src="data:image/jpeg;base64,{b64_img}" class="galeria-img">'
                     html_galeria += '</div>'
-                    
                     st.markdown(html_galeria, unsafe_allow_html=True)
-                    
-                    if len(imagenes_del_producto) > 1:
-                        st.markdown("<p style='text-align: center; color: #aaa; font-size: 13px; margin-top: -5px; margin-bottom: 5px;'>👉 Desliza la foto</p>", unsafe_allow_html=True)
-                    
-                    # AQUÍ ESTÁ EL BOTÓN QUE ABRE EL MODAL DE ZOOM
-                    if st.button("🔍 Ampliar foto", key=f"zoom_{prod['_id']}", use_container_width=True):
-                        abrir_zoom(prod['nombre'], imagenes_del_producto)
+                    if len(imagenes_del_producto) > 1: st.markdown("<p style='text-align: center; color: #aaa; font-size: 13px; margin-top: -5px; margin-bottom: 5px;'>👉 Desliza la foto</p>", unsafe_allow_html=True)
+                    if st.button("🔍 Ampliar foto", key=f"zoom_{prod['_id']}", use_container_width=True): abrir_zoom(prod['nombre'], imagenes_del_producto)
                 
-                precio_mostrar = prod.get('precio', 0.0)
-                stock_actual = prod.get('stock', 0)
+                # VARIABLES LIMPIAS DE STOCK Y PRECIO
+                stock_normal = prod.get('stock', 0)
+                precio_normal = prod.get('precio', 0.0)
+                stock_detalle = prod.get('stock_detalle', 0)
+                precio_detalle = prod.get('precio_detalle', 0.0)
+                texto_detalle = prod.get('detalle', "")
+
+                # Auto-Migración de lectura
+                if texto_detalle and 'stock_detalle' not in prod:
+                    stock_detalle = stock_normal
+                    precio_detalle = precio_normal
+                    stock_normal = 0
+                    precio_normal = 0.0
                 
-                en_carrito = sum(1 for item in st.session_state.carrito if item["_id"] == prod["_id"])
-                stock_disponible_real = stock_actual - en_carrito
-                
+                # Renderizar Atributos
                 if tipo_busqueda == "Bakugans 🔥": st.write(f"**Atributo:** {prod.get('atributo', 'N/A')}")
                 elif tipo_busqueda == "Cartas 🃏": st.write(f"**Material:** {prod.get('material', 'N/A')}")
                 elif tipo_busqueda == "BakuCores 🛑": st.write(f"**Símbolo:** {prod.get('simbolo', 'N/A')}")
                 
-                if "detalle" in prod and prod["detalle"]:
-                    st.warning(f"⚠️ **Detalle:** {prod['detalle']}")
-                
-                if stock_actual == 0:
-                    st.markdown("🚨 **ESTADO:** <span style='color:#e74c3c; font-weight:bold;'>AGOTADO (0)</span>", unsafe_allow_html=True)
-                else:
-                    st.write(f"**Disponibles:** {stock_actual}")
+                # VISTA PARA CLIENTES
+                if not es_modo_admin_catalogo:
+                    en_carrito_normal = sum(1 for item in st.session_state.carrito if item["_id"] == prod["_id"] and item.get("variante") == "normal")
+                    en_carrito_detalle = sum(1 for item in st.session_state.carrito if item["_id"] == prod["_id"] and item.get("variante") == "detalle")
                     
-                st.write(f"**Precio:** ${precio_mostrar}")
-                
-                if stock_actual > 0 and not es_modo_admin_catalogo:
-                    if stock_disponible_real > 0:
-                        if st.button("🛒 Añadir al carrito", key=f"add_{prod['_id']}", use_container_width=True):
-                            st.session_state.carrito.append({
-                                "_id": prod["_id"],
-                                "nombre": prod["nombre"],
-                                "precio": precio_mostrar
-                            })
-                            st.rerun()
+                    if stock_normal == 0 and stock_detalle == 0:
+                        st.markdown("🚨 **ESTADO:** <span style='color:#e74c3c; font-weight:bold;'>AGOTADO (0)</span>", unsafe_allow_html=True)
                     else:
-                        st.button("✅ En el carrito (Máx)", disabled=True, key=f"max_{prod['_id']}", use_container_width=True)
+                        if stock_normal > 0:
+                            st.write(f"🟢 **Perfecta:** ${precio_normal} (Disp: {stock_normal})")
+                            if (stock_normal - en_carrito_normal) > 0:
+                                if st.button(f"🛒 Añadir Normal (${precio_normal})", key=f"add_n_{prod['_id']}", use_container_width=True):
+                                    st.session_state.carrito.append({"_id": prod["_id"], "nombre": f"{prod['nombre']}", "precio": precio_normal, "variante": "normal"})
+                                    st.rerun()
+                            else: st.button("✅ En carrito (Máx)", disabled=True, key=f"max_n_{prod['_id']}", use_container_width=True)
+                            
+                        if stock_detalle > 0:
+                            st.markdown(f"<span style='color:#f39c12; font-size: 0.9em;'>⚠️ **Detalle:** {texto_detalle}</span>", unsafe_allow_html=True)
+                            st.write(f"🟠 **C/Detalle:** ${precio_detalle} (Disp: {stock_detalle})")
+                            if (stock_detalle - en_carrito_detalle) > 0:
+                                if st.button(f"🛒 Añadir c/Detalle (${precio_detalle})", key=f"add_d_{prod['_id']}", use_container_width=True):
+                                    st.session_state.carrito.append({"_id": prod["_id"], "nombre": f"{prod['nombre']} (Detalle)", "precio": precio_detalle, "variante": "detalle"})
+                                    st.rerun()
+                            else: st.button("✅ Detalle en carrito (Máx)", disabled=True, key=f"max_d_{prod['_id']}", use_container_width=True)
 
+                # VISTA PARA ADMINISTRADOR (EDITAR PRECIOS)
                 if es_modo_admin_catalogo:
                     st.markdown("---")
-                    c_stock, c_del = st.columns(2)
-                    with c_stock:
-                        add_stk = st.number_input("Sumar piezas", min_value=1, step=1, key=f"add_{prod['_id']}")
-                        if st.button("➕ Stock", key=f"btn_stk_{prod['_id']}", use_container_width=True):
-                            col_productos.update_one({"_id": prod["_id"]}, {"$inc": {"stock": add_stk}})
+                    with st.expander("✏️ Editar Precios y Stock"):
+                        np = st.number_input("Precio Normal ($)", value=float(precio_normal), step=10.0, key=f"epn_{prod['_id']}")
+                        ns = st.number_input("Stock Normal", value=int(stock_normal), step=1, key=f"esn_{prod['_id']}")
+                        ndp = st.number_input("Precio Detalle ($)", value=float(precio_detalle), step=10.0, key=f"epd_{prod['_id']}")
+                        nds = st.number_input("Stock Detalle", value=int(stock_detalle), step=1, key=f"esd_{prod['_id']}")
+                        ndtxt = st.text_input("Desc. Detalle", value=texto_detalle, key=f"etxt_{prod['_id']}")
+                        
+                        if st.button("💾 Guardar Cambios", key=f"save_{prod['_id']}", use_container_width=True):
+                            col_productos.update_one({"_id": prod["_id"]}, {"$set": {
+                                "precio": np, "stock": ns, "precio_detalle": ndp, "stock_detalle": nds, "detalle": ndtxt
+                            }})
+                            st.success("¡Actualizado!")
                             st.rerun()
-                    with c_del:
-                        st.write("") 
-                        st.write("")
-                        if st.button("🗑️ Eliminar", key=f"del_{prod['_id']}", use_container_width=True):
-                            col_productos.delete_one({"_id": prod["_id"]})
-                            st.rerun()
+                            
+                    if st.button("🗑️ Eliminar Producto", key=f"del_{prod['_id']}", use_container_width=True):
+                        col_productos.delete_one({"_id": prod["_id"]})
+                        st.rerun()
