@@ -125,7 +125,7 @@ else:
     st.sidebar.markdown("### 🛒 Mi Tienda")
 
 st.sidebar.header("Filtros Avanzados")
-tipo_busqueda = st.sidebar.selectbox("¿Qué buscas?", ["Bakugans 🔥", "Cartas 🃏", "BakuCores 🛑", "Piezas / Detalles 🛠️"])
+tipo_busqueda = st.sidebar.selectbox("¿Qué buscas?", ["Todo el Catálogo 🌍", "Bakugans 🔥", "Cartas 🃏", "BakuCores 🛑", "Piezas / Detalles 🛠️"])
 
 if tipo_busqueda == "Bakugans 🔥": sub_filtro = st.sidebar.selectbox("Filtra por Atributo", categorias)
 elif tipo_busqueda == "Cartas 🃏": sub_filtro = st.sidebar.selectbox("Filtra por Material", materiales)
@@ -372,6 +372,7 @@ else:
     elif tipo_busqueda == "BakuCores 🛑": 
         query_base["tipo"] = "BakuCore"
         if sub_filtro != "Todos": query_base["simbolo"] = sub_filtro
+    # Si es "Todo el Catálogo 🌍" o "Piezas / Detalles", no filtramos la base de datos por tipo de pieza.
 
     productos_crudos = list(col_productos.find(query_base))
     productos_filtrados = []
@@ -389,11 +390,13 @@ else:
             
         if es_modo_admin_catalogo:
             if tipo_busqueda == "Piezas / Detalles 🛠️" and not texto_detalle: continue
-            if tipo_busqueda != "Piezas / Detalles 🛠️" and texto_detalle and stock_normal == 0 and stock_detalle > 0: continue
+            if tipo_busqueda != "Piezas / Detalles 🛠️" and tipo_busqueda != "Todo el Catálogo 🌍" and texto_detalle and stock_normal == 0 and stock_detalle > 0: continue
             productos_filtrados.append(prod)
         else:
             if tipo_busqueda == "Piezas / Detalles 🛠️":
                 if texto_detalle and stock_detalle > 0: productos_filtrados.append(prod)
+            elif tipo_busqueda == "Todo el Catálogo 🌍":
+                if stock_normal > 0 or stock_detalle > 0: productos_filtrados.append(prod)
             else:
                 if stock_normal > 0: productos_filtrados.append(prod)
 
@@ -430,10 +433,14 @@ else:
                     stock_normal = 0
                     precio_normal = 0.0
                 
-                # Renderizar Atributos
-                if tipo_busqueda == "Bakugans 🔥": st.write(f"**Atributo:** {prod.get('atributo', 'N/A')}")
-                elif tipo_busqueda == "Cartas 🃏": st.write(f"**Material:** {prod.get('material', 'N/A')}")
-                elif tipo_busqueda == "BakuCores 🛑": st.write(f"**Símbolo:** {prod.get('simbolo', 'N/A')}")
+                # IDENTIFICADOR INTELIGENTE DE TIPO DE PRODUCTO PARA MOSTRAR SU ATRIBUTO CORRECTO EN "TODO EL CATÁLOGO"
+                tipo_real = prod.get("tipo", "Bakugan")
+                if tipo_real == "Bakugan" or "atributo" in prod: 
+                    st.write(f"**Atributo:** {prod.get('atributo', 'N/A')}")
+                elif tipo_real == "Carta": 
+                    st.write(f"**Material:** {prod.get('material', 'N/A')}")
+                elif tipo_real == "BakuCore": 
+                    st.write(f"**Símbolo:** {prod.get('simbolo', 'N/A')}")
                 
                 # VISTA PARA CLIENTES
                 if not es_modo_admin_catalogo:
