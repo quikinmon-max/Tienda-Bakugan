@@ -392,7 +392,7 @@ elif vista_admin == "📋 Ver Apartados":
             with col_notif:
                 with st.expander("📱 Notificar"):
                     # Textos pre-armados listos para enviar
-                    texto_expiracion = f"Hola {nombre_cliente}, te escribo de tu tienda. Te recuerdo que tu apartado de {len(items)} piezas (Restante: ${restante}) vence el {fecha_max_venc}. ¿Gusta que revisemos un abono/prórroga o procesamos tu envío?"
+                    texto_expiracion = f"Hola {nombre_cliente}, te escribo de Baku-Market. Te recuerdo que tu apartado de {len(items)} piezas (Restante: ${restante}) vence el {fecha_max_venc}. ¿Gusta que revisemos un abono/prórroga o procesamos tu envío?"
                     texto_cancelacion = f"Hola {nombre_cliente}. Te notificamos que el tiempo de tu apartado concluyó y tu pedido de {len(items)} piezas ha sido cancelado, liberando el stock. ¡Gracias por tu comprensión!"
                     
                     link_exp = f"https://wa.me/{tel.replace(' ', '')}?text={urllib.parse.quote(texto_expiracion)}"
