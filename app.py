@@ -158,7 +158,7 @@ else:
 
 st.sidebar.header("Filtros Avanzados")
 
-# --- LISTA COMPLETA DE CATEGORÍAS ---
+# --- 1. SE AGREGÓ "Deka 🌐" A LA LISTA VISUAL DEL CLIENTE ---
 tipo_busqueda = st.sidebar.selectbox("¿Qué buscas?", [
     "Todo el Catálogo 🌍", 
     "Bakugans 🔥", 
@@ -169,6 +169,7 @@ tipo_busqueda = st.sidebar.selectbox("¿Qué buscas?", [
     "BakuTech 🦾", 
     "Extras 🎁", 
     "Sets de Batalla 🏟️", 
+    "Deka 🌐",
     "Piezas / Detalles 🛠️"
 ])
 
@@ -254,8 +255,9 @@ elif vista_admin == "🎨 Personalizar Página":
 elif vista_admin == "➕ Agregar Producto":
     st.title("🛠️ Agregar nuevo producto")
     
+    # --- 2. SE AGREGÓ "Deka" AL MENÚ DE ADMINISTRADOR ---
     tipo_prod = st.selectbox("Tipo de Producto", [
-        "Bakugan", "Carta", "BakuCore", "Vehículo", "Armamento", "BakuTech", "Extra", "Set de Batalla"
+        "Bakugan", "Carta", "BakuCore", "Vehículo", "Armamento", "BakuTech", "Extra", "Set de Batalla", "Deka"
     ])
     
     nombre = st.text_input("Nombre / Descripción principal")
@@ -432,7 +434,7 @@ else:
     query_base = {}
     if busqueda_texto: query_base["nombre"] = {"$regex": busqueda_texto, "$options": "i"}
 
-    # --- FILTROS INTELIGENTES PARA LAS NUEVAS CATEGORÍAS ---
+    # --- 3. SE AGREGÓ LA LÓGICA DE FILTRADO PARA "Deka" ---
     if tipo_busqueda == "Bakugans 🔥":
         query_base["$or"] = [{"tipo": "Bakugan"}, {"tipo": {"$exists": False}}]
         if sub_filtro != "Todos": query_base["atributo"] = sub_filtro
@@ -528,7 +530,6 @@ else:
                         st.markdown("🚨 **AGOTADO**", unsafe_allow_html=True)
                     else:
                         if stock_normal > 0:
-                            # --- LÓGICA DE C/U APLICADA AQUÍ ---
                             cu_norm = " c/u" if stock_normal > 1 else ""
                             st.write(f"🟢 **Perfecta:** ${precio_normal}{cu_norm} (Disp: {stock_normal})")
                             
@@ -542,7 +543,6 @@ else:
                         if stock_detalle > 0:
                             st.markdown(f"<span style='color:#f39c12; font-size: 0.9em;'>⚠️ **Detalle:** {texto_detalle}</span>", unsafe_allow_html=True)
                             
-                            # --- LÓGICA DE C/U APLICADA AQUÍ ---
                             cu_det = " c/u" if stock_detalle > 1 else ""
                             st.write(f"🟠 **C/Detalle:** ${precio_detalle}{cu_det} (Disp: {stock_detalle})")
                             
