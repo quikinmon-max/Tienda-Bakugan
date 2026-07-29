@@ -38,7 +38,6 @@ col_ventas = db["ventas"]
 col_carritos = db["carritos_temporales"] 
 
 # --- MIGRACIÓN AUTOMÁTICA DE APARTADOS VIEJOS ---
-# Actualiza los apartados que se hicieron antes de esta mejora para que tengan vencimiento
 viejos = col_apartados.find({"fecha_vencimiento": {"$exists": False}})
 for v in viejos:
     fv = v.get("fecha_apartado", datetime.now()) + timedelta(days=3)
@@ -66,7 +65,7 @@ def guardar_carrito():
         upsert=True
     )
 
-# Memoria para que no te saque del modo Admin si la página se reinicia
+# Memoria para que no te saque del modo Admin
 if 'admin_autenticado' not in st.session_state:
     st.session_state.admin_autenticado = False
 
@@ -135,10 +134,9 @@ css_global = f"""
 """
 st.markdown(css_global, unsafe_allow_html=True)
 
-# ---------------- MANTENIMIENTO INTELIGENTE (AHORA USA FECHA DE VENCIMIENTO) ----------------
+# ---------------- MANTENIMIENTO INTELIGENTE ----------------
 def mantenimiento_base_datos():
     ahora = datetime.now()
-    # Eliminar solo los que ya pasaron de su fecha_vencimiento
     vencidos = col_apartados.find({"fecha_vencimiento": {"$lt": ahora}})
     for doc in vencidos:
         campo = doc.get("campo_stock", "stock")
@@ -348,9 +346,10 @@ elif vista_admin == "📋 Ver Apartados":
             else:
                 st.markdown(f"**⚠️ Total a cobrar:** <span style='color:#2ecc71; font-size:1.2em; font-weight:bold;'>${total_cliente}</span>", unsafe_allow_html=True)
             
-            col_conf, col_pro, col_canc = st.columns(3)
+            # --- DIVISIÓN EN 4 COLUMNAS PARA INCLUIR LAS NOTIFICACIONES ---
+            col_conf, col_pro, col_canc, col_notif = st.columns(4)
             with col_conf:
-                with st.expander("✅ Procesar Venta"):
+                with st.expander("✅ Vender"):
                     cobro_envio = st.number_input("Cobro Envío $", min_value=0.0, step=10.0, key=f"cobro_{tel}")
                     gastos = st.number_input("Costo Guía $", min_value=0.0, step=10.0, key=f"gasto_{tel}")
                     obs = st.text_input("Obs", key=f"obs_{tel}")
@@ -367,15 +366,13 @@ elif vista_admin == "📋 Ver Apartados":
                         st.rerun()
                         
             with col_pro:
-                with st.expander("⏳ Prórroga / Abono"):
-                    nuevo_anticipo = st.number_input("Abonar Anticipo $", min_value=0.0, step=50.0, key=f"ant_{tel}")
-                    dias_pro = st.number_input("Sumar Días Extra", min_value=0, step=1, value=1, key=f"dias_{tel}")
+                with st.expander("⏳ Prórroga"):
+                    nuevo_anticipo = st.number_input("Abonar $", min_value=0.0, step=50.0, key=f"ant_{tel}")
+                    dias_pro = st.number_input("Días Extra", min_value=0, step=1, value=1, key=f"dias_{tel}")
                     if st.button("Aplicar", key=f"btn_pro_{tel}"):
                         ids_items = [item["_id"] for item in items]
-                        # Abonamos el anticipo al primer item para no duplicar sumas
                         if nuevo_anticipo > 0:
                             col_apartados.update_one({"_id": ids_items[0]}, {"$inc": {"anticipo": nuevo_anticipo}})
-                        # Actualizamos la fecha de vencimiento a todos los items del cliente
                         if dias_pro > 0:
                             nueva_fecha = max(fechas_venc) + timedelta(days=dias_pro)
                             col_apartados.update_many({"_id": {"$in": ids_items}}, {"$set": {"fecha_vencimiento": nueva_fecha}})
@@ -391,6 +388,19 @@ elif vista_admin == "📋 Ver Apartados":
                             col_apartados.delete_one({"_id": doc["_id"]})
                         st.success("¡Cancelado!")
                         st.rerun()
+
+            with col_notif:
+                with st.expander("📱 Notificar"):
+                    # Textos pre-armados listos para enviar
+                    texto_expiracion = f"Hola {nombre_cliente}, te escribo de tu tienda. Te recuerdo que tu apartado de {len(items)} piezas (Restante: ${restante}) vence el {fecha_max_venc}. ¿Gusta que revisemos un abono/prórroga o procesamos tu envío?"
+                    texto_cancelacion = f"Hola {nombre_cliente}. Te notificamos que el tiempo de tu apartado concluyó y tu pedido de {len(items)} piezas ha sido cancelado, liberando el stock. ¡Gracias por tu comprensión!"
+                    
+                    link_exp = f"https://wa.me/{tel.replace(' ', '')}?text={urllib.parse.quote(texto_expiracion)}"
+                    link_canc = f"https://wa.me/{tel.replace(' ', '')}?text={urllib.parse.quote(texto_cancelacion)}"
+                    
+                    st.markdown(f"[⚠️ Aviso Expiración]({link_exp})", unsafe_allow_html=True)
+                    st.markdown(f"<br>[🚫 Aviso Cancelación]({link_canc})", unsafe_allow_html=True)
+
             st.markdown("</div>", unsafe_allow_html=True)
 
 else:
@@ -430,7 +440,7 @@ else:
                     
                     if st.button("Confirmar Apartado", use_container_width=True, type="primary"):
                         if nom and tel:
-                            # 1. Guardar en Base de Datos de apartados CON FECHA DE VENCIMIENTO (+3 días inicial)
+                            # 1. Guardar en Base de Datos de apartados
                             for prod_cart in st.session_state.carrito:
                                 db_prod = col_productos.find_one({"_id": prod_cart["_id"]})
                                 campo_stock = "stock"
@@ -441,9 +451,9 @@ else:
                                     "producto_id": prod_cart["_id"], "nombre_producto": prod_cart["nombre"],
                                     "precio": prod_cart["precio"], "comprador_nombre": nom, "comprador_telefono": tel,
                                     "fecha_apartado": datetime.now(), 
-                                    "fecha_vencimiento": datetime.now() + timedelta(days=3), # <-- NUEVA LÓGICA DE VENCIMIENTO
+                                    "fecha_vencimiento": datetime.now() + timedelta(days=3), 
                                     "campo_stock": campo_stock,
-                                    "anticipo": 0.0 # <-- NUEVO CAMPO DE ANTICIPO INICIAL
+                                    "anticipo": 0.0
                                 })
                                 col_productos.update_one({"_id": prod_cart["_id"]}, {"$inc": {campo_stock: -1}})
                             
