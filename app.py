@@ -447,6 +447,7 @@ else:
     elif tipo_busqueda == "BakuTech 🦾": query_base["tipo"] = "BakuTech"
     elif tipo_busqueda == "Extras 🎁": query_base["tipo"] = "Extra"
     elif tipo_busqueda == "Sets de Batalla 🏟️": query_base["tipo"] = "Set de Batalla"
+    elif tipo_busqueda == "Deka 🌐": query_base["tipo"] = "Deka"
 
     productos_crudos = list(col_productos.find(query_base))
     productos_filtrados = []
