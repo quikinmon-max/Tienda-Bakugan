@@ -157,7 +157,20 @@ else:
     st.sidebar.markdown("### 🛒 Mi Tienda")
 
 st.sidebar.header("Filtros Avanzados")
-tipo_busqueda = st.sidebar.selectbox("¿Qué buscas?", ["Todo el Catálogo 🌍", "Bakugans 🔥", "Cartas 🃏", "BakuCores 🛑", "Piezas / Detalles 🛠️"])
+
+# --- LISTA COMPLETA DE CATEGORÍAS ---
+tipo_busqueda = st.sidebar.selectbox("¿Qué buscas?", [
+    "Todo el Catálogo 🌍", 
+    "Bakugans 🔥", 
+    "Cartas 🃏", 
+    "BakuCores 🛑", 
+    "Vehículos 🏎️", 
+    "Armamentos ⚔️", 
+    "BakuTech 🦾", 
+    "Extras 🎁", 
+    "Sets de Batalla 🏟️", 
+    "Piezas / Detalles 🛠️"
+])
 
 if tipo_busqueda == "Bakugans 🔥": sub_filtro = st.sidebar.selectbox("Filtra por Atributo", categorias)
 elif tipo_busqueda == "Cartas 🃏": sub_filtro = st.sidebar.selectbox("Filtra por Material", materiales)
@@ -239,8 +252,13 @@ elif vista_admin == "🎨 Personalizar Página":
                 st.rerun()
 
 elif vista_admin == "➕ Agregar Producto":
-    st.title("🛠️ Agregar nuevo producto Multivariante")
-    tipo_prod = st.radio("Tipo de Producto", ["Bakugan", "Carta", "BakuCore"])
+    st.title("🛠️ Agregar nuevo producto")
+    
+    # Menú desplegable para que no se vea amontonado
+    tipo_prod = st.selectbox("Tipo de Producto", [
+        "Bakugan", "Carta", "BakuCore", "Vehículo", "Armamento", "BakuTech", "Extra", "Set de Batalla"
+    ])
+    
     nombre = st.text_input("Nombre / Descripción principal")
     
     col1, col2, col3 = st.columns(3)
@@ -283,7 +301,7 @@ elif vista_admin == "➕ Agregar Producto":
             }
             if tipo_prod == "Bakugan": nuevo_prod["atributo"] = atributo_form
             elif tipo_prod == "Carta": nuevo_prod["material"] = material_form
-            else: nuevo_prod["simbolo"] = simbolo_form
+            elif tipo_prod == "BakuCore": nuevo_prod["simbolo"] = simbolo_form
                 
             col_productos.insert_one(nuevo_prod)
             st.success(f"¡{nombre} subido con éxito!")
@@ -415,6 +433,7 @@ else:
     query_base = {}
     if busqueda_texto: query_base["nombre"] = {"$regex": busqueda_texto, "$options": "i"}
 
+    # --- FILTROS INTELIGENTES PARA LAS NUEVAS CATEGORÍAS ---
     if tipo_busqueda == "Bakugans 🔥":
         query_base["$or"] = [{"tipo": "Bakugan"}, {"tipo": {"$exists": False}}]
         if sub_filtro != "Todos": query_base["atributo"] = sub_filtro
@@ -424,6 +443,11 @@ else:
     elif tipo_busqueda == "BakuCores 🛑": 
         query_base["tipo"] = "BakuCore"
         if sub_filtro != "Todos": query_base["simbolo"] = sub_filtro
+    elif tipo_busqueda == "Vehículos 🏎️": query_base["tipo"] = "Vehículo"
+    elif tipo_busqueda == "Armamentos ⚔️": query_base["tipo"] = "Armamento"
+    elif tipo_busqueda == "BakuTech 🦾": query_base["tipo"] = "BakuTech"
+    elif tipo_busqueda == "Extras 🎁": query_base["tipo"] = "Extra"
+    elif tipo_busqueda == "Sets de Batalla 🏟️": query_base["tipo"] = "Set de Batalla"
 
     productos_crudos = list(col_productos.find(query_base))
     productos_filtrados = []
@@ -454,7 +478,7 @@ else:
     rng.shuffle(productos_filtrados)
 
     if not productos_filtrados:
-        st.info("No encontramos piezas.")
+        st.info("No encontramos piezas en esta categoría.")
     else:
         cols = st.columns(3)
         for index, prod in enumerate(productos_filtrados):
@@ -491,10 +515,12 @@ else:
                     stock_normal = 0
                     precio_normal = 0.0
                 
+                # Para mostrar información extra dependiendo del tipo de pieza
                 tipo_real = prod.get("tipo", "Bakugan")
                 if tipo_real == "Bakugan" or "atributo" in prod: st.write(f"**Atributo:** {prod.get('atributo', 'N/A')}")
                 elif tipo_real == "Carta": st.write(f"**Material:** {prod.get('material', 'N/A')}")
                 elif tipo_real == "BakuCore": st.write(f"**Símbolo:** {prod.get('simbolo', 'N/A')}")
+                # Las nuevas categorías (Vehículos, Armamentos, etc.) no necesitan mostrar campos extra.
                 
                 if not es_modo_admin_catalogo:
                     en_carrito_normal = sum(1 for item in st.session_state.carrito if item["_id"] == prod["_id"] and item.get("variante") == "normal")
