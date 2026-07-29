@@ -180,10 +180,17 @@ tipo_busqueda = st.sidebar.selectbox("¿Qué buscas?", [
     "Todo el Catálogo 🌍", "Bakugans 🔥", "Cartas 🃏", "BakuCores 🛑", "Vehículos 🏎️", "Armamentos ⚔️", "BakuTech 🦾", "Extras 🎁", "Sets de Batalla 🏟️", "Deka 🌐", "Piezas / Detalles 🛠️"
 ])
 
-if tipo_busqueda == "Bakugans 🔥": sub_filtro = st.sidebar.selectbox("Filtra por Atributo", categorias)
-elif tipo_busqueda == "Cartas 🃏": sub_filtro = st.sidebar.selectbox("Filtra por Material", materiales)
-elif tipo_busqueda == "BakuCores 🛑": sub_filtro = st.sidebar.selectbox("Filtra por Símbolo", simbolos_core)
-else: sub_filtro = "Todos"
+# --- LOGICA ACTUALIZADA DE FILTROS EN MENÚ LATERAL ---
+tipos_con_atributo_ui = ["Bakugans 🔥", "Vehículos 🏎️", "Armamentos ⚔️", "BakuTech 🦾", "Sets de Batalla 🏟️", "Deka 🌐"]
+
+if tipo_busqueda in tipos_con_atributo_ui: 
+    sub_filtro = st.sidebar.selectbox("Filtra por Atributo", categorias)
+elif tipo_busqueda == "Cartas 🃏": 
+    sub_filtro = st.sidebar.selectbox("Filtra por Material", materiales)
+elif tipo_busqueda == "BakuCores 🛑": 
+    sub_filtro = st.sidebar.selectbox("Filtra por Símbolo", simbolos_core)
+else: 
+    sub_filtro = "Todos"
 
 es_admin_url = st.query_params.get("jefe") == "1"
 vista_admin = "Catálogo" 
@@ -529,21 +536,31 @@ else:
     query_base = {}
     if busqueda_texto: query_base["nombre"] = {"$regex": busqueda_texto, "$options": "i"}
 
-    if tipo_busqueda == "Bakugans 🔥":
-        query_base["$or"] = [{"tipo": "Bakugan"}, {"tipo": {"$exists": False}}]
-        if sub_filtro != "Todos": query_base["atributo"] = sub_filtro
+    # --- LOGICA ACTUALIZADA DE QUERY EN BASE DE DATOS ---
+    if tipo_busqueda in tipos_con_atributo_ui:
+        # Asignar el tipo correcto para la base de datos
+        if tipo_busqueda == "Bakugans 🔥": query_base["$or"] = [{"tipo": "Bakugan"}, {"tipo": {"$exists": False}}]
+        elif tipo_busqueda == "Vehículos 🏎️": query_base["tipo"] = "Vehículo"
+        elif tipo_busqueda == "Armamentos ⚔️": query_base["tipo"] = "Armamento"
+        elif tipo_busqueda == "BakuTech 🦾": query_base["tipo"] = "BakuTech"
+        elif tipo_busqueda == "Sets de Batalla 🏟️": query_base["tipo"] = "Set de Batalla"
+        elif tipo_busqueda == "Deka 🌐": query_base["tipo"] = "Deka"
+        
+        # Aplicar el filtro de atributo si el usuario seleccionó uno
+        if sub_filtro != "Todos": 
+            query_base["atributo"] = sub_filtro
+            
     elif tipo_busqueda == "Cartas 🃏":
         query_base["tipo"] = "Carta"
         if sub_filtro != "Todas": query_base["material"] = sub_filtro
     elif tipo_busqueda == "BakuCores 🛑": 
         query_base["tipo"] = "BakuCore"
         if sub_filtro != "Todos": query_base["simbolo"] = sub_filtro
-    elif tipo_busqueda == "Vehículos 🏎️": query_base["tipo"] = "Vehículo"
-    elif tipo_busqueda == "Armamentos ⚔️": query_base["tipo"] = "Armamento"
-    elif tipo_busqueda == "BakuTech 🦾": query_base["tipo"] = "BakuTech"
-    elif tipo_busqueda == "Extras 🎁": query_base["tipo"] = "Extra"
-    elif tipo_busqueda == "Sets de Batalla 🏟️": query_base["tipo"] = "Set de Batalla"
-    elif tipo_busqueda == "Deka 🌐": query_base["tipo"] = "Deka"
+    elif tipo_busqueda == "Extras 🎁": 
+        query_base["tipo"] = "Extra"
+    elif tipo_busqueda == "Piezas / Detalles 🛠️":
+        pass # La lógica de este se maneja en el filtrado posterior
+    # Todo el Catálogo 🌍 no agrega filtros extra a query_base
 
     productos_crudos = list(col_productos.find(query_base))
     productos_filtrados = []
