@@ -44,14 +44,22 @@ def comprimir_imagen(img_file):
     img.save(buffer, format="JPEG", quality=70)
     return base64.b64encode(buffer.getvalue()).decode("utf-8")
 
-# ---------------- FUNCIÓN DE AMPLIACIÓN DE FOTOS (MODAL) ----------------
-@st.dialog("🖼️ Galería Ampliada")
+# ---------------- FUNCIÓN DE AMPLIACIÓN DE FOTOS (MODAL CON CARRETE) ----------------
+@st.dialog("🔍 Modo Detalle")
 def abrir_zoom(nombre_prod, imagenes_b64):
-    """Abre una ventana sobrepuesta para ver las fotos en grande"""
+    """Abre una ventana sobrepuesta con el carrete en tamaño gigante"""
     st.markdown(f"### {nombre_prod}")
+    
+    html_galeria = '<div class="galeria-container">'
     for img_b64 in imagenes_b64:
-        # Decodificamos el texto Base64 a bytes para que Streamlit la renderice gigante
-        st.image(base64.b64decode(img_b64), use_container_width=True)
+        # Usamos una clase CSS distinta para que aquí se vea gigante y sin recortes
+        html_galeria += f'<img src="data:image/jpeg;base64,{img_b64}" class="galeria-ampliada-img">'
+    html_galeria += '</div>'
+    
+    st.markdown(html_galeria, unsafe_allow_html=True)
+    
+    if len(imagenes_b64) > 1:
+        st.markdown("<p style='text-align: center; color: #aaa; font-size: 14px; margin-top: 10px;'>👉 Desliza para ver más</p>", unsafe_allow_html=True)
 
 # ---------------- CARGAR DISEÑO PERSONALIZADO (FONDO Y CSS) ----------------
 config_data = col_config.find_one({"_id": "sitio_prefs"})
@@ -103,12 +111,25 @@ css_global = f"""
 .galeria-container::-webkit-scrollbar {{
     display: none; 
 }}
+
+/* Imagen en el catálogo normal (cuadrada y rellena) */
 .galeria-img {{
     scroll-snap-align: center;
     flex: 0 0 100%;
     width: 100%;
-    aspect-ratio: 1 / 1 !important; /* Cuadrado perfecto */
-    object-fit: cover !important; /* Rellena TODO el cuadrado estilo Instagram */
+    aspect-ratio: 1 / 1 !important; 
+    object-fit: cover !important; 
+    border-radius: 8px;
+    background-color: transparent; 
+}}
+
+/* Imagen al darle ZOOM (Gigante y sin recortes) */
+.galeria-ampliada-img {{
+    scroll-snap-align: center;
+    flex: 0 0 100%;
+    width: 100%;
+    max-height: 65vh; /* Ocupa el 65% de la pantalla en alto */
+    object-fit: contain !important; /* No corta la foto para ver los detalles */
     border-radius: 8px;
     background-color: transparent; 
 }}
