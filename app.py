@@ -346,7 +346,6 @@ elif vista_admin == "📋 Ver Apartados":
             else:
                 st.markdown(f"**⚠️ Total a cobrar:** <span style='color:#2ecc71; font-size:1.2em; font-weight:bold;'>${total_cliente}</span>", unsafe_allow_html=True)
             
-            # --- DIVISIÓN EN 4 COLUMNAS PARA INCLUIR LAS NOTIFICACIONES ---
             col_conf, col_pro, col_canc, col_notif = st.columns(4)
             with col_conf:
                 with st.expander("✅ Vender"):
@@ -391,9 +390,10 @@ elif vista_admin == "📋 Ver Apartados":
 
             with col_notif:
                 with st.expander("📱 Notificar"):
-                    # Textos pre-armados listos para enviar
+                    # --- LÍNEA BLINDADA EXACTAMENTE COMO SE SOLICITÓ ---
                     texto_expiracion = f"Hola {nombre_cliente}, te escribo de Baku-Market. Te recuerdo que tu apartado de {len(items)} piezas (Restante: ${restante}) vence el {fecha_max_venc}. ¿Gusta que revisemos un abono/prórroga o procesamos tu envío?"
-                    texto_cancelacion = f"Hola {nombre_cliente}. Te notificamos que el tiempo de tu apartado concluyó y tu pedido de {len(items)} piezas ha sido cancelado, liberando el stock. ¡Gracias por tu comprensión!"
+                    
+                    texto_cancelacion = f"Hola {nombre_cliente}. Te notificamos que el tiempo de tu apartado concluyó en Baku-Market y tu pedido de {len(items)} piezas ha sido cancelado, liberando el stock. ¡Gracias por tu comprensión!"
                     
                     link_exp = f"https://wa.me/{tel.replace(' ', '')}?text={urllib.parse.quote(texto_expiracion)}"
                     link_canc = f"https://wa.me/{tel.replace(' ', '')}?text={urllib.parse.quote(texto_cancelacion)}"
@@ -409,6 +409,17 @@ else:
     
     if es_modo_admin_catalogo:
         st.title("🛠️ Administrar Catálogo e Inventario")
+        
+        # --- CONTADORES DE ELEMENTOS PARA EL ADMIN ---
+        todos_para_conteo = list(col_productos.find({}, {"stock": 1, "stock_detalle": 1}))
+        total_publicaciones = len(todos_para_conteo)
+        total_piezas_fisicas = sum(p.get("stock", 0) + p.get("stock_detalle", 0) for p in todos_para_conteo)
+        
+        col_m1, col_m2 = st.columns(2)
+        col_m1.metric("📦 Publicaciones Totales (Modelos)", total_publicaciones)
+        col_m2.metric("🔢 Total de Piezas Físicas (Stock)", total_piezas_fisicas)
+        st.markdown("---")
+        
         busqueda_texto = st.text_input("🔍 Buscar pieza por nombre...")
     else:
         col_tit, col_busc, col_cart = st.columns([1.5, 2, 1.5])
