@@ -257,7 +257,11 @@ elif vista_admin == "➕ Agregar Producto":
     nombre = st.text_input("Nombre / Descripción principal")
     
     col1, col2, col3 = st.columns(3)
-    with col1: atributo_form = st.selectbox("Atributo", categorias[1:], disabled=(tipo_prod != "Bakugan")) 
+    
+    # --- AQUÍ ESTÁ EL CAMBIO PARA DESBLOQUEAR EL ATRIBUTO ---
+    tipos_con_atributo = ["Bakugan", "Vehículo", "Armamento", "BakuTech", "Set de Batalla", "Deka"]
+    
+    with col1: atributo_form = st.selectbox("Atributo", categorias[1:], disabled=(tipo_prod not in tipos_con_atributo)) 
     with col2: material_form = st.selectbox("Material", materiales[1:], disabled=(tipo_prod != "Carta"))
     with col3: simbolo_form = st.selectbox("Símbolo", simbolos_core[1:], disabled=(tipo_prod != "BakuCore"))
     
@@ -294,7 +298,9 @@ elif vista_admin == "➕ Agregar Producto":
                 "precio_detalle": precio_detalle, "stock_detalle": stock_detalle, "detalle": detalle_prod,
                 "imagenes_b64": lista_imagenes_b64, "imagenes_detalle_b64": lista_imagenes_detalle_b64
             }
-            if tipo_prod == "Bakugan": nuevo_prod["atributo"] = atributo_form
+            
+            # --- AQUÍ ESTÁ EL CAMBIO PARA GUARDAR EL ATRIBUTO ---
+            if tipo_prod in tipos_con_atributo: nuevo_prod["atributo"] = atributo_form
             elif tipo_prod == "Carta": nuevo_prod["material"] = material_form
             elif tipo_prod == "BakuCore": nuevo_prod["simbolo"] = simbolo_form
                 
@@ -390,7 +396,6 @@ elif vista_admin == "📋 Ver Apartados":
 
             with col_notif:
                 with st.expander("📱 Notificar"):
-                    # --- LÍNEA BLINDADA EXACTAMENTE COMO SE SOLICITÓ ---
                     texto_expiracion = f"Hola {nombre_cliente}, te escribo de Baku-Market. Te recuerdo que tu apartado de {len(items)} piezas (Restante: ${restante}) vence el {fecha_max_venc}. ¿Gusta que revisemos un abono/prórroga o procesamos tu envío?"
                     
                     texto_cancelacion = f"Hola {nombre_cliente}. Te notificamos que el tiempo de tu apartado concluyó en Baku-Market y tu pedido de {len(items)} piezas ha sido cancelado, liberando el stock. ¡Gracias por tu comprensión!"
@@ -423,7 +428,7 @@ else:
         busqueda_texto = st.text_input("🔍 Buscar pieza por nombre...")
     else:
         col_tit, col_busc, col_cart = st.columns([1.5, 2, 1.5])
-        with col_tit: st.markdown("### 🔥 Baku-Market")
+        with col_tit: st.markdown("### 🔥 Baku-Market") 
         with col_busc: busqueda_texto = st.text_input("Buscar", placeholder="🔍 Buscar...", label_visibility="collapsed")
         with col_cart:
             cantidad_carrito = len(st.session_state.carrito)
