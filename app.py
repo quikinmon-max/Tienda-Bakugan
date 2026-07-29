@@ -1,6 +1,7 @@
 import streamlit as st
 import pymongo
 import base64
+import random
 from datetime import datetime, timedelta
 from PIL import Image, ImageOps
 import io
@@ -12,9 +13,13 @@ st.set_page_config(
     layout="wide"
 )
 
-# ---------------- INICIALIZAR CARRITO EN MEMORIA ----------------
+# ---------------- INICIALIZAR MEMORIA Y SEMILLA ALEATORIA ----------------
 if 'carrito' not in st.session_state:
     st.session_state.carrito = []
+
+# Esta semilla congela el orden aleatorio por visita para que las fotos no brinquen al dar clic
+if 'rand_seed' not in st.session_state:
+    st.session_state.rand_seed = random.randint(1, 999999)
 
 # ---------------- CONEXIÓN A MONGODB ----------------
 @st.cache_resource
@@ -372,18 +377,15 @@ else:
     elif tipo_busqueda == "BakuCores 🛑": 
         query_base["tipo"] = "BakuCore"
         if sub_filtro != "Todos": query_base["simbolo"] = sub_filtro
-    # Si es "Todo el Catálogo 🌍" o "Piezas / Detalles", no filtramos la base de datos por tipo de pieza.
 
     productos_crudos = list(col_productos.find(query_base))
     productos_filtrados = []
 
-    # Filtrar localmente para adaptar a las variables duales (Normal vs Detalle)
     for prod in productos_crudos:
         stock_normal = prod.get('stock', 0)
         stock_detalle = prod.get('stock_detalle', 0)
         texto_detalle = prod.get('detalle', "")
         
-        # Corrección mágica para piezas viejas (solo detalle)
         if texto_detalle and 'stock_detalle' not in prod:
             stock_detalle = stock_normal
             stock_normal = 0
@@ -399,6 +401,12 @@ else:
                 if stock_normal > 0 or stock_detalle > 0: productos_filtrados.append(prod)
             else:
                 if stock_normal > 0: productos_filtrados.append(prod)
+
+    # =================================================================
+    # MAGIA DE ALEATORIEDAD APLICADA AL CATÁLOGO (CLIENTES Y ADMIN)
+    # =================================================================
+    rng = random.Random(st.session_state.rand_seed)
+    rng.shuffle(productos_filtrados)
 
     if not productos_filtrados:
         st.info("No encontramos ninguna pieza con estos filtros.")
@@ -419,21 +427,18 @@ else:
                     if len(imagenes_del_producto) > 1: st.markdown("<p style='text-align: center; color: #aaa; font-size: 13px; margin-top: -5px; margin-bottom: 5px;'>👉 Desliza la foto</p>", unsafe_allow_html=True)
                     if st.button("🔍 Ampliar foto", key=f"zoom_{prod['_id']}", use_container_width=True): abrir_zoom(prod['nombre'], imagenes_del_producto)
                 
-                # VARIABLES LIMPIAS DE STOCK Y PRECIO
                 stock_normal = prod.get('stock', 0)
                 precio_normal = prod.get('precio', 0.0)
                 stock_detalle = prod.get('stock_detalle', 0)
                 precio_detalle = prod.get('precio_detalle', 0.0)
                 texto_detalle = prod.get('detalle', "")
 
-                # Auto-Migración de lectura
                 if texto_detalle and 'stock_detalle' not in prod:
                     stock_detalle = stock_normal
                     precio_detalle = precio_normal
                     stock_normal = 0
                     precio_normal = 0.0
                 
-                # IDENTIFICADOR INTELIGENTE DE TIPO DE PRODUCTO PARA MOSTRAR SU ATRIBUTO CORRECTO EN "TODO EL CATÁLOGO"
                 tipo_real = prod.get("tipo", "Bakugan")
                 if tipo_real == "Bakugan" or "atributo" in prod: 
                     st.write(f"**Atributo:** {prod.get('atributo', 'N/A')}")
@@ -442,7 +447,6 @@ else:
                 elif tipo_real == "BakuCore": 
                     st.write(f"**Símbolo:** {prod.get('simbolo', 'N/A')}")
                 
-                # VISTA PARA CLIENTES
                 if not es_modo_admin_catalogo:
                     en_carrito_normal = sum(1 for item in st.session_state.carrito if item["_id"] == prod["_id"] and item.get("variante") == "normal")
                     en_carrito_detalle = sum(1 for item in st.session_state.carrito if item["_id"] == prod["_id"] and item.get("variante") == "detalle")
@@ -467,7 +471,6 @@ else:
                                     st.rerun()
                             else: st.button("✅ Detalle en carrito (Máx)", disabled=True, key=f"max_d_{prod['_id']}", use_container_width=True)
 
-                # VISTA PARA ADMINISTRADOR (EDITAR PRECIOS)
                 if es_modo_admin_catalogo:
                     st.markdown("---")
                     with st.expander("✏️ Editar Precios y Stock"):
