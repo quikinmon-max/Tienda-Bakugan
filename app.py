@@ -207,7 +207,7 @@ elif vista_admin == "🎨 Personalizar Página":
 
 elif vista_admin == "➕ Agregar Producto":
     st.title("🛠️ Agregar nuevo producto Multivariante")
-    st.markdown("Ahora puedes subir la versión normal y la de detalles en la misma publicación.")
+    st.markdown("Ahora puedes subir la versión normal y la de detalles en la misma publicación, con sus fotos separadas.")
     st.markdown("---")
     tipo_prod = st.radio("Tipo de Producto", ["Bakugan", "Carta", "BakuCore"])
     nombre = st.text_input("Nombre / Descripción principal")
@@ -222,27 +222,37 @@ elif vista_admin == "➕ Agregar Producto":
     with c_pn: precio = st.number_input("Precio Normal ($)", min_value=0.0, step=10.0)
     with c_sn: stock = st.number_input("Stock Normal", min_value=0, step=1, value=1)
     
+    imagenes_subidas = st.file_uploader("📸 Sube fotos de la pieza NORMAL (Perfecta)", type=["png", "jpg", "jpeg"], accept_multiple_files=True)
+    
     st.markdown("### 🟠 Piezas con Detalles (Desperfectos)")
     con_detalle = st.checkbox("Activar versión con detalles / desperfectos para este producto")
+    imagenes_detalle_subidas = []
+    
     if con_detalle:
         c_pd, c_sd = st.columns(2)
         with c_pd: precio_detalle = st.number_input("Precio con Detalle ($)", min_value=0.0, step=10.0)
         with c_sd: stock_detalle = st.number_input("Stock con Detalle", min_value=0, step=1, value=1)
         detalle_prod = st.text_input("⚠️ Describe el desperfecto (Ej. Raspón, falta pintura, sin resorte)")
+        
+        # AQUÍ ESTÁ EL SEGUNDO CARGADOR DE IMÁGENES SOLO PARA DETALLES
+        imagenes_detalle_subidas = st.file_uploader("📸 Sube fotos SOLO mostrando el DETALLE o desperfecto", type=["png", "jpg", "jpeg"], accept_multiple_files=True)
     else:
         precio_detalle, stock_detalle, detalle_prod = 0.0, 0, ""
     
-    imagenes_subidas = st.file_uploader("Sube hasta 6 fotos (Frontal, trasera...)", type=["png", "jpg", "jpeg"], accept_multiple_files=True)
-    
     if st.button("Subir Producto al Catálogo"):
-        if nombre and imagenes_subidas and (precio > 0 or precio_detalle > 0):
-            imagenes_subidas = imagenes_subidas[:6]
-            lista_imagenes_b64 = [comprimir_imagen(img) for img in imagenes_subidas]
+        if nombre and (imagenes_subidas or imagenes_detalle_subidas) and (precio > 0 or precio_detalle > 0):
+            lista_imagenes_b64 = [comprimir_imagen(img) for img in imagenes_subidas[:6]] if imagenes_subidas else []
+            lista_imagenes_detalle_b64 = [comprimir_imagen(img) for img in imagenes_detalle_subidas[:6]] if imagenes_detalle_subidas else []
             
+            # Si activó detalle pero no subió fotos específicas del detalle, reutiliza las fotos normales
+            if con_detalle and not lista_imagenes_detalle_b64:
+                lista_imagenes_detalle_b64 = lista_imagenes_b64
+                
             nuevo_prod = {
                 "tipo": tipo_prod, "nombre": nombre, "precio": precio, "stock": stock,
                 "precio_detalle": precio_detalle, "stock_detalle": stock_detalle, "detalle": detalle_prod,
-                "imagenes_b64": lista_imagenes_b64
+                "imagenes_b64": lista_imagenes_b64,
+                "imagenes_detalle_b64": lista_imagenes_detalle_b64
             }
             if tipo_prod == "Bakugan": nuevo_prod["atributo"] = atributo_form
             elif tipo_prod == "Carta": nuevo_prod["material"] = material_form
@@ -252,7 +262,7 @@ elif vista_admin == "➕ Agregar Producto":
             st.success(f"¡{nombre} subido con éxito!")
             st.rerun() 
         else:
-            st.error("Falta el nombre, imagen o asignar al menos un precio.")
+            st.error("Falta el nombre, subir al menos una foto (normal o de detalle), o asignar precio.")
 
 elif vista_admin == "📋 Ver Apartados":
     st.title("📋 Registro de Clientes y Apartados")
@@ -416,8 +426,20 @@ else:
             with cols[index % 3]:
                 st.markdown(f"### {prod['nombre']}")
                 
-                imagenes_del_producto = prod.get("imagenes_b64", [])
-                if not imagenes_del_producto and "imagen_b64" in prod: imagenes_del_producto = [prod["imagen_b64"]]
+                # --- CEREBRO DIVISOR DE FOTOS ---
+                # Si el cliente está viendo la pestaña de detalles, mostramos SÓLO las fotos con desperfectos.
+                # Si no, mostramos las perfectas.
+                if tipo_busqueda == "Piezas / Detalles 🛠️":
+                    imagenes_del_producto = prod.get("imagenes_detalle_b64", prod.get("imagenes_b64", []))
+                else:
+                    imagenes_del_producto = prod.get("imagenes_b64", [])
+                    # Si no subió fotos perfectas (solo detalle), usamos las de detalle como plan B
+                    if not imagenes_del_producto:
+                        imagenes_del_producto = prod.get("imagenes_detalle_b64", [])
+                        
+                # Adaptación para piezas súper viejas
+                if not imagenes_del_producto and "imagen_b64" in prod: 
+                    imagenes_del_producto = [prod["imagen_b64"]]
                 
                 if imagenes_del_producto:
                     html_galeria = '<div class="galeria-container">'
