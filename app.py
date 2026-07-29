@@ -254,7 +254,6 @@ elif vista_admin == "🎨 Personalizar Página":
 elif vista_admin == "➕ Agregar Producto":
     st.title("🛠️ Agregar nuevo producto")
     
-    # Menú desplegable para que no se vea amontonado
     tipo_prod = st.selectbox("Tipo de Producto", [
         "Bakugan", "Carta", "BakuCore", "Vehículo", "Armamento", "BakuTech", "Extra", "Set de Batalla"
     ])
@@ -413,7 +412,7 @@ else:
                                 })
                                 col_productos.update_one({"_id": prod_cart["_id"]}, {"$inc": {campo_stock: -1}})
                             
-                            # 2. CONSTRUIR EL MENSAJE DETALLADO DE WHATSAPP (Codificado para URLs)
+                            # 2. CONSTRUIR EL MENSAJE DETALLADO DE WHATSAPP
                             texto_crudo = f"Hola, soy {nom}. Acabo de apartar {cantidad_carrito} piezas por un total de ${total_carrito}.\n\nMis piezas son:\n"
                             for item in st.session_state.carrito:
                                 texto_crudo += f"👉 {item['nombre']} (${item['precio']})\n"
@@ -515,12 +514,10 @@ else:
                     stock_normal = 0
                     precio_normal = 0.0
                 
-                # Para mostrar información extra dependiendo del tipo de pieza
                 tipo_real = prod.get("tipo", "Bakugan")
                 if tipo_real == "Bakugan" or "atributo" in prod: st.write(f"**Atributo:** {prod.get('atributo', 'N/A')}")
                 elif tipo_real == "Carta": st.write(f"**Material:** {prod.get('material', 'N/A')}")
                 elif tipo_real == "BakuCore": st.write(f"**Símbolo:** {prod.get('simbolo', 'N/A')}")
-                # Las nuevas categorías (Vehículos, Armamentos, etc.) no necesitan mostrar campos extra.
                 
                 if not es_modo_admin_catalogo:
                     en_carrito_normal = sum(1 for item in st.session_state.carrito if item["_id"] == prod["_id"] and item.get("variante") == "normal")
@@ -530,7 +527,10 @@ else:
                         st.markdown("🚨 **AGOTADO**", unsafe_allow_html=True)
                     else:
                         if stock_normal > 0:
-                            st.write(f"🟢 **Perfecta:** ${precio_normal} (Disp: {stock_normal})")
+                            # --- LÓGICA DE C/U APLICADA AQUÍ ---
+                            cu_norm = " c/u" if stock_normal > 1 else ""
+                            st.write(f"🟢 **Perfecta:** ${precio_normal}{cu_norm} (Disp: {stock_normal})")
+                            
                             if (stock_normal - en_carrito_normal) > 0:
                                 if st.button(f"🛒 Añadir Normal", key=f"add_n_{prod['_id']}", use_container_width=True):
                                     st.session_state.carrito.append({"_id": prod["_id"], "nombre": f"{prod['nombre']}", "precio": precio_normal, "variante": "normal"})
@@ -540,7 +540,11 @@ else:
                             
                         if stock_detalle > 0:
                             st.markdown(f"<span style='color:#f39c12; font-size: 0.9em;'>⚠️ **Detalle:** {texto_detalle}</span>", unsafe_allow_html=True)
-                            st.write(f"🟠 **C/Detalle:** ${precio_detalle} (Disp: {stock_detalle})")
+                            
+                            # --- LÓGICA DE C/U APLICADA AQUÍ ---
+                            cu_det = " c/u" if stock_detalle > 1 else ""
+                            st.write(f"🟠 **C/Detalle:** ${precio_detalle}{cu_det} (Disp: {stock_detalle})")
+                            
                             if (stock_detalle - en_carrito_detalle) > 0:
                                 if st.button(f"🛒 Añadir c/Detalle", key=f"add_d_{prod['_id']}", use_container_width=True):
                                     st.session_state.carrito.append({"_id": prod["_id"], "nombre": f"{prod['nombre']} (Detalle)", "precio": precio_detalle, "variante": "detalle"})
