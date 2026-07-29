@@ -5,8 +5,12 @@ import random
 import uuid
 import urllib.parse
 from datetime import datetime, timedelta
-from PIL import Image, ImageOps
+from PIL import Image, ImageOps, ImageFile
 import io
+
+# --- BLINDAJE PARA FOTOS PESADAS EN STREAMLIT CLOUD ---
+ImageFile.LOAD_TRUNCATED_IMAGES = True
+Image.MAX_IMAGE_PIXELS = None
 
 # ---------------- CONFIGURACIÓN DE PÁGINA ----------------
 st.set_page_config(
@@ -76,7 +80,10 @@ if 'admin_autenticado' not in st.session_state:
 
 # ---------------- MOTOR DE COMPRESIÓN DE IMÁGENES ----------------
 def comprimir_imagen(img_file):
-    img = Image.open(img_file)
+    # Leemos los bytes completos primero para que PIL no truene en la nube
+    img_bytes = img_file.getvalue()
+    img = Image.open(io.BytesIO(img_bytes))
+    
     img = ImageOps.exif_transpose(img)
     if img.mode in ("RGBA", "P"): img = img.convert("RGB")
     img.thumbnail((800, 800))
@@ -622,7 +629,6 @@ else:
                             
                             if (stock_normal - en_carrito_normal) > 0:
                                 if st.button("🛒 Añadir", key=f"add_n_{prod['_id']}", use_container_width=True):
-                                    # SE AÑADIÓ "tipo": tipo_real PARA QUE LA LÓGICA DE PROMO FUNCIONE
                                     st.session_state.carrito.append({"_id": prod["_id"], "nombre": f"{prod['nombre']}", "precio": precio_normal, "variante": "normal", "tipo": tipo_real})
                                     guardar_carrito() 
                                     st.rerun()
@@ -636,7 +642,6 @@ else:
                             
                             if (stock_detalle - en_carrito_detalle) > 0:
                                 if st.button("🛒 Añadir", key=f"add_d_{prod['_id']}", use_container_width=True):
-                                    # SE AÑADIÓ "tipo": tipo_real PARA QUE LA LÓGICA DE PROMO FUNCIONE
                                     st.session_state.carrito.append({"_id": prod["_id"], "nombre": f"{prod['nombre']} (Detalle)", "precio": precio_detalle, "variante": "detalle", "tipo": tipo_real})
                                     guardar_carrito() 
                                     st.rerun()
