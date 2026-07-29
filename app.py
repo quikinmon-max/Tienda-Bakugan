@@ -423,7 +423,7 @@ else:
         busqueda_texto = st.text_input("🔍 Buscar pieza por nombre...")
     else:
         col_tit, col_busc, col_cart = st.columns([1.5, 2, 1.5])
-        with col_tit: st.markdown("### 🔥 Catálogo Libre")
+        with col_tit: st.markdown("### 🔥 Baku-Market")
         with col_busc: busqueda_texto = st.text_input("Buscar", placeholder="🔍 Buscar...", label_visibility="collapsed")
         with col_cart:
             cantidad_carrito = len(st.session_state.carrito)
