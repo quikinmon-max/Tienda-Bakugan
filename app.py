@@ -74,16 +74,13 @@ def guardar_carrito():
         upsert=True
     )
 
-# Memoria para que no te saque del modo Admin
 if 'admin_autenticado' not in st.session_state:
     st.session_state.admin_autenticado = False
 
 # ---------------- MOTOR DE COMPRESIÓN DE IMÁGENES ----------------
 def comprimir_imagen(img_file):
-    # Leemos los bytes completos primero para que PIL no truene en la nube
     img_bytes = img_file.getvalue()
     img = Image.open(io.BytesIO(img_bytes))
-    
     img = ImageOps.exif_transpose(img)
     if img.mode in ("RGBA", "P"): img = img.convert("RGB")
     img.thumbnail((800, 800))
@@ -110,14 +107,19 @@ logo_b64 = config_data.get("logo_b64") if config_data else None
 
 css_global = f"""
 <style>
+/* --- OCULTAR RASTROS DE STREAMLIT (ESTILO MERCADO LIBRE) --- */
+#MainMenu {{visibility: hidden;}}
+footer {{visibility: hidden;}}
+header {{visibility: hidden;}}
+.stDeployButton {{display:none;}}
+
 .stApp {{
     {'background-image: url("data:image/png;base64,' + fondo_b64 + '");' if fondo_b64 else ''}
     background-size: cover; background-position: center; background-repeat: no-repeat; background-attachment: fixed;
 }}
-.stApp > header {{ background-color: transparent; }}
 .block-container {{
     background-color: rgba(14, 17, 23, 0.85); 
-    padding-top: 5rem !important; padding-right: 2rem; padding-bottom: 2rem; padding-left: 2rem;
+    padding-top: 2rem !important; padding-right: 2rem; padding-bottom: 2rem; padding-left: 2rem;
     margin-top: 2rem; border-radius: 15px;
 }}
 .tarjeta-cliente {{
@@ -137,7 +139,7 @@ css_global = f"""
     object-fit: contain !important; border-radius: 8px; background-color: transparent; 
 }}
 @media (max-width: 768px) {{
-    .block-container {{ padding-top: 3rem !important; margin-top: 0rem; }}
+    .block-container {{ padding-top: 1rem !important; margin-top: 0rem; }}
     .stTextInput input {{ font-size: 16px !important; padding: 0.6rem !important; }}
     .stButton > button {{ font-size: 16px !important; padding: 0.5rem 1rem !important; min-height: 2.8rem !important; }}
     div[data-testid="stPopover"] > button {{ font-size: 16px !important; padding: 0.6rem 1rem !important; min-height: 2.8rem !important; }}
@@ -180,7 +182,7 @@ tipo_busqueda = st.sidebar.selectbox("¿Qué buscas?", [
     "Todo el Catálogo 🌍", "Bakugans 🔥", "Cartas 🃏", "BakuCores 🛑", "Vehículos 🏎️", "Armamentos ⚔️", "BakuTech 🦾", "Extras 🎁", "Sets de Batalla 🏟️", "Deka 🌐", "Piezas / Detalles 🛠️"
 ])
 
-# --- LOGICA ACTUALIZADA DE FILTROS EN MENÚ LATERAL ---
+# --- FILTROS DE ATRIBUTO DESBLOQUEADOS ---
 tipos_con_atributo_ui = ["Bakugans 🔥", "Vehículos 🏎️", "Armamentos ⚔️", "BakuTech 🦾", "Sets de Batalla 🏟️", "Deka 🌐"]
 
 if tipo_busqueda in tipos_con_atributo_ui: 
@@ -356,18 +358,18 @@ elif vista_admin == "📋 Ver Apartados":
                 total_anticipo += item.get("anticipo", 0.0)
                 fechas_venc.append(item.get("fecha_vencimiento", hora_qro()))
                 nombres_items.append(item['nombre_producto'])
-                st.write(f"- **{item['nombre_producto']}** (${precio_item}) _[Apt: {fecha_str}]_")
+                st.write(f"- **{item['nombre_producto']}** (${precio_item:,.2f}) _[Apt: {fecha_str}]_")
             
             fecha_max_venc = max(fechas_venc).strftime("%d/%m %H:%M")
             restante = total_cliente - total_anticipo
             
             st.markdown(f"**⏳ Vence el:** {fecha_max_venc}")
-            st.markdown(f"**💰 Total pedido:** ${total_cliente}")
+            st.markdown(f"**💰 Total pedido:** ${total_cliente:,.2f}")
             if total_anticipo > 0:
-                st.markdown(f"**💸 Anticipo dado:** <span style='color:#f39c12;'>${total_anticipo}</span>", unsafe_allow_html=True)
-                st.markdown(f"**⚠️ Restante a cobrar:** <span style='color:#e74c3c; font-size:1.2em; font-weight:bold;'>${restante}</span>", unsafe_allow_html=True)
+                st.markdown(f"**💸 Anticipo dado:** <span style='color:#f39c12;'>${total_anticipo:,.2f}</span>", unsafe_allow_html=True)
+                st.markdown(f"**⚠️ Restante a cobrar:** <span style='color:#e74c3c; font-size:1.2em; font-weight:bold;'>${restante:,.2f}</span>", unsafe_allow_html=True)
             else:
-                st.markdown(f"**⚠️ Total a cobrar:** <span style='color:#2ecc71; font-size:1.2em; font-weight:bold;'>${total_cliente}</span>", unsafe_allow_html=True)
+                st.markdown(f"**⚠️ Total a cobrar:** <span style='color:#2ecc71; font-size:1.2em; font-weight:bold;'>${total_cliente:,.2f}</span>", unsafe_allow_html=True)
             
             col_conf, col_pro, col_canc, col_notif = st.columns(4)
             with col_conf:
@@ -413,7 +415,7 @@ elif vista_admin == "📋 Ver Apartados":
 
             with col_notif:
                 with st.expander("📱 Notificar"):
-                    texto_expiracion = f"Hola {nombre_cliente}, te escribo de Baku-Market. Te recuerdo que tu apartado de {len(items)} piezas (Restante: ${restante}) vence el {fecha_max_venc}. ¿Gusta que revisemos un abono/prórroga o procesamos tu envío?"
+                    texto_expiracion = f"Hola {nombre_cliente}, te escribo de Baku-Market. Te recuerdo que tu apartado de {len(items)} piezas (Restante: ${restante:,.2f}) vence el {fecha_max_venc}. ¿Gusta que revisemos un abono/prórroga o procesamos tu envío?"
                     
                     texto_cancelacion = f"Hola {nombre_cliente}. Te notificamos que el tiempo de tu apartado concluyó en Baku-Market y tu pedido de {len(items)} piezas ha sido cancelado, liberando el stock. ¡Gracias por tu comprensión!"
                     
@@ -432,7 +434,6 @@ else:
     if es_modo_admin_catalogo:
         st.title("🛠️ Administrar Catálogo e Inventario")
         
-        # --- CONTADORES DE ELEMENTOS PARA EL ADMIN ---
         todos_para_conteo = list(col_productos.find({}, {"stock": 1, "stock_detalle": 1}))
         total_publicaciones = len(todos_para_conteo)
         total_piezas_fisicas = sum(p.get("stock", 0) + p.get("stock_detalle", 0) for p in todos_para_conteo)
@@ -447,19 +448,40 @@ else:
         col_tit, col_busc, col_cart = st.columns([1.5, 2, 1.5])
         with col_tit: st.markdown("### 🔥 Baku-Market") 
         with col_busc: busqueda_texto = st.text_input("Buscar", placeholder="🔍 Buscar...", label_visibility="collapsed")
+        
+        # --- CARRITO Y PROMOCIONES ---
         with col_cart:
             cantidad_carrito = len(st.session_state.carrito)
             
-            # --- LÓGICA DE PROMOCIÓN DE CARTAS ---
+            # --- 1. LÓGICA DE PROMOCIONES ---
+            # Promoción de Cartas
             num_cartas = sum(1 for item in st.session_state.carrito if item.get("tipo") == "Carta")
-            promo_activa = num_cartas >= 5
+            promo_cartas_activa = num_cartas >= 5
             
+            # Calcular subtotal para ver si llegamos a los $2000
+            subtotal_previo = 0
+            for item in st.session_state.carrito:
+                es_carta_promo = (promo_cartas_activa and item.get("tipo") == "Carta" and item['precio'] > 40.0)
+                subtotal_previo += 40.0 if es_carta_promo else item['precio']
+                
+            # Promoción del 10%
+            promo_10_activa = subtotal_previo >= 2000
+            
+            # 2. Calcular el total final cuidando que no se empalmen
             total_carrito = 0
             for item in st.session_state.carrito:
-                precio_efectivo = 40.0 if (promo_activa and item.get("tipo") == "Carta") else item['precio']
+                es_carta_promo = (promo_cartas_activa and item.get("tipo") == "Carta" and item['precio'] > 40.0)
+                
+                if es_carta_promo:
+                    precio_efectivo = 40.0 
+                elif promo_10_activa:
+                    precio_efectivo = item['precio'] * 0.90 
+                else:
+                    precio_efectivo = item['precio']
+                    
                 total_carrito += precio_efectivo
             
-            with st.popover(f"🛒 Carrito ({cantidad_carrito}) - ${total_carrito}", use_container_width=True):
+            with st.popover(f"🛒 Carrito ({cantidad_carrito}) - ${total_carrito:,.2f}", use_container_width=True):
                 if 'wa_link' in st.session_state:
                     st.success("✅ ¡Piezas apartadas!")
                     st.markdown(f"[**📲 HAZ CLIC AQUÍ PARA AVISARME POR WHATSAPP**]({st.session_state.wa_link})")
@@ -470,17 +492,25 @@ else:
                 st.markdown("#### Resumen:")
                 
                 if cantidad_carrito > 0:
-                    if promo_activa:
+                    if promo_cartas_activa:
                         st.success("🎉 ¡Promo activa: Cartas a $40 c/u!")
+                    if promo_10_activa:
+                        st.info("🤑 ¡10% de desc. en tu carrito mayor a $2000!\n*(No aplica en envíos ni se suma con promo de cartas)*")
                         
                     for i, item in enumerate(st.session_state.carrito):
                         c1, c2 = st.columns([4, 1])
                         
-                        precio_item = 40.0 if (promo_activa and item.get("tipo") == "Carta") else item['precio']
-                        if promo_activa and item.get("tipo") == "Carta" and item['precio'] > 40:
-                            texto_precio = f"~~${item['precio']}~~ **${precio_item}**"
+                        es_carta_promo = (promo_cartas_activa and item.get("tipo") == "Carta" and item['precio'] > 40.0)
+                        
+                        if es_carta_promo:
+                            precio_item = 40.0
+                            texto_precio = f"~~${item['precio']}~~ **${precio_item:,.2f}**"
+                        elif promo_10_activa:
+                            precio_item = item['precio'] * 0.90
+                            texto_precio = f"~~${item['precio']}~~ **${precio_item:,.2f}**"
                         else:
-                            texto_precio = f"**${precio_item}**"
+                            precio_item = item['precio']
+                            texto_precio = f"**${precio_item:,.2f}**"
                             
                         c1.markdown(f"<span style='font-size:0.9em;'>{item['nombre']} - {texto_precio}</span>", unsafe_allow_html=True)
                         if c2.button("❌", key=f"del_cart_{i}_{item['_id']}"):
@@ -489,20 +519,26 @@ else:
                             st.rerun()
                             
                     st.markdown("---")
-                    st.markdown(f"**Total a pagar: ${total_carrito}**")
+                    st.markdown(f"**Total a pagar: ${total_carrito:,.2f}**")
                     nom = st.text_input("Tu Nombre", key="checkout_nom")
                     tel = st.text_input("Tu WhatsApp", key="checkout_tel")
                     
                     if st.button("Confirmar Apartado", use_container_width=True, type="primary"):
                         if nom and tel:
-                            # 1. Guardar en Base de Datos de apartados con el precio final calculado
                             for prod_cart in st.session_state.carrito:
                                 db_prod = col_productos.find_one({"_id": prod_cart["_id"]})
                                 campo_stock = "stock"
                                 if prod_cart.get("variante") == "detalle":
                                     campo_stock = "stock_detalle" if "stock_detalle" in db_prod else "stock"
                                 
-                                precio_final_bd = 40.0 if (promo_activa and prod_cart.get("tipo") == "Carta") else prod_cart["precio"]
+                                es_carta_promo = (promo_cartas_activa and prod_cart.get("tipo") == "Carta" and prod_cart['precio'] > 40.0)
+                                
+                                if es_carta_promo:
+                                    precio_final_bd = 40.0
+                                elif promo_10_activa:
+                                    precio_final_bd = prod_cart['precio'] * 0.90
+                                else:
+                                    precio_final_bd = prod_cart['precio']
                                     
                                 col_apartados.insert_one({
                                     "producto_id": prod_cart["_id"], "nombre_producto": prod_cart["nombre"],
@@ -514,17 +550,27 @@ else:
                                 })
                                 col_productos.update_one({"_id": prod_cart["_id"]}, {"$inc": {campo_stock: -1}})
                             
-                            # 2. CONSTRUIR EL MENSAJE DETALLADO DE WHATSAPP CON DESCUENTOS
-                            texto_crudo = f"Hola, soy {nom}. Acabo de apartar {cantidad_carrito} piezas por un total de ${total_carrito}.\n\nMis piezas son:\n"
+                            texto_crudo = f"Hola, soy {nom}. Acabo de apartar {cantidad_carrito} piezas por un total de ${total_carrito:,.2f}.\n\nMis piezas son:\n"
                             for item in st.session_state.carrito:
-                                precio_final_wa = 40.0 if (promo_activa and item.get("tipo") == "Carta") else item["precio"]
-                                msg_promo = " (Promo $40)" if (promo_activa and item.get("tipo") == "Carta" and item["precio"] > 40) else ""
-                                texto_crudo += f"👉 {item['nombre']} (${precio_final_wa}){msg_promo}\n"
+                                es_carta_promo = (promo_cartas_activa and item.get("tipo") == "Carta" and item["precio"] > 40.0)
+                                if es_carta_promo:
+                                    precio_final_wa = 40.0
+                                    msg_promo = " (Promo $40)"
+                                elif promo_10_activa:
+                                    precio_final_wa = item['precio'] * 0.90
+                                    msg_promo = " (-10%)"
+                                else:
+                                    precio_final_wa = item["precio"]
+                                    msg_promo = ""
+                                    
+                                texto_crudo += f"👉 {item['nombre']} (${precio_final_wa:,.2f}){msg_promo}\n"
+                            
+                            if promo_10_activa:
+                                texto_crudo += "\n*Nota: Estoy consciente de que el descuento del 10% aplicado no cubre gastos de envío.*"
                             
                             texto_url = urllib.parse.quote(texto_crudo)
                             st.session_state.wa_link = f"https://wa.me/4462879839?text={texto_url}"
                             
-                            # 3. Vaciar carrito
                             st.session_state.carrito = [] 
                             guardar_carrito()
                             st.rerun()
@@ -536,9 +582,8 @@ else:
     query_base = {}
     if busqueda_texto: query_base["nombre"] = {"$regex": busqueda_texto, "$options": "i"}
 
-    # --- LOGICA ACTUALIZADA DE QUERY EN BASE DE DATOS ---
+    # --- LÓGICA DE BÚSQUEDA ---
     if tipo_busqueda in tipos_con_atributo_ui:
-        # Asignar el tipo correcto para la base de datos
         if tipo_busqueda == "Bakugans 🔥": query_base["$or"] = [{"tipo": "Bakugan"}, {"tipo": {"$exists": False}}]
         elif tipo_busqueda == "Vehículos 🏎️": query_base["tipo"] = "Vehículo"
         elif tipo_busqueda == "Armamentos ⚔️": query_base["tipo"] = "Armamento"
@@ -546,7 +591,6 @@ else:
         elif tipo_busqueda == "Sets de Batalla 🏟️": query_base["tipo"] = "Set de Batalla"
         elif tipo_busqueda == "Deka 🌐": query_base["tipo"] = "Deka"
         
-        # Aplicar el filtro de atributo si el usuario seleccionó uno
         if sub_filtro != "Todos": 
             query_base["atributo"] = sub_filtro
             
@@ -558,9 +602,6 @@ else:
         if sub_filtro != "Todos": query_base["simbolo"] = sub_filtro
     elif tipo_busqueda == "Extras 🎁": 
         query_base["tipo"] = "Extra"
-    elif tipo_busqueda == "Piezas / Detalles 🛠️":
-        pass # La lógica de este se maneja en el filtrado posterior
-    # Todo el Catálogo 🌍 no agrega filtros extra a query_base
 
     productos_crudos = list(col_productos.find(query_base))
     productos_filtrados = []
@@ -586,7 +627,6 @@ else:
             else:
                 if stock_normal > 0: productos_filtrados.append(prod)
 
-    # ---------------- APLICAR ALEATORIEDAD CON SEMILLA ----------------
     rng = random.Random(st.session_state.rand_seed)
     rng.shuffle(productos_filtrados)
 
@@ -642,7 +682,7 @@ else:
                     else:
                         if stock_normal > 0:
                             cu_norm = " c/u" if stock_normal > 1 else ""
-                            st.write(f"🟢 **Perfecta:** ${precio_normal}{cu_norm} (Disp: {stock_normal})")
+                            st.write(f"🟢 **Perfecta:** ${precio_normal:,.2f}{cu_norm} (Disp: {stock_normal})")
                             
                             if (stock_normal - en_carrito_normal) > 0:
                                 if st.button("🛒 Añadir", key=f"add_n_{prod['_id']}", use_container_width=True):
@@ -655,7 +695,7 @@ else:
                             st.markdown(f"<span style='color:#f39c12; font-size: 0.9em;'>⚠️ **Detalle:** {texto_detalle}</span>", unsafe_allow_html=True)
                             
                             cu_det = " c/u" if stock_detalle > 1 else ""
-                            st.write(f"🟠 **C/Detalle:** ${precio_detalle}{cu_det} (Disp: {stock_detalle})")
+                            st.write(f"🟠 **C/Detalle:** ${precio_detalle:,.2f}{cu_det} (Disp: {stock_detalle})")
                             
                             if (stock_detalle - en_carrito_detalle) > 0:
                                 if st.button("🛒 Añadir", key=f"add_d_{prod['_id']}", use_container_width=True):
