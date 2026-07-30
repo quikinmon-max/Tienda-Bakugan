@@ -577,6 +577,18 @@ else:
                         else: st.warning("⚠️ Faltan datos.")
                 else: st.info("Carrito vacío.")
 
+        # ---------------- BANNER DE PROMOCIONES (VISUAL) ----------------
+        if not es_modo_admin_catalogo:
+            st.markdown("""
+            <div style="background: linear-gradient(90deg, #ff416c, #ff4b2b); padding: 12px; border-radius: 8px; text-align: center; color: white; font-size: 15px; margin-bottom: 20px; box-shadow: 0 4px 10px rgba(0,0,0,0.2);">
+                ✨ <b>¡SÚPER PROMOS ACTIVAS!</b> ✨ <br class="mobile-break">
+                🃏 <b>5 o más Cartas a $40 c/u</b> &nbsp;|&nbsp; 🤑 <b>10% de DESCUENTO</b> en compras mayores a $2,000 <i>(No aplica en envío)</i>
+            </div>
+            <style>
+                @media (min-width: 768px) { .mobile-break { display: none; } }
+            </style>
+            """, unsafe_allow_html=True)
+            
     st.markdown("---")
 
     query_base = {}
