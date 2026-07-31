@@ -150,14 +150,24 @@ config_data = col_config.find_one({"_id": "sitio_prefs"})
 fondo_b64 = config_data.get("fondo_b64") if config_data else None
 logo_b64 = config_data.get("logo_b64") if config_data else None
 
-# --- SOLUCIÓN DEL MENÚ MÓVIL EN EL CSS ---
+# --- ELIMINADOR DE BOTONES FLOTANTES DE LA NUBE ---
 css_global = f"""
 <style>
+/* Ocultar Menú principal y pie de página genéricos */
 #MainMenu {{visibility: hidden;}}
 footer {{visibility: hidden;}}
-/* En lugar de esconder todo el encabezado, lo hacemos transparente para conservar el menú hamburguesa */
+
+/* Dejar el encabezado transparente para NO perder la hamburguesa de los filtros en celular */
 header {{background-color: transparent !important; box-shadow: none !important;}}
-.stDeployButton {{display:none;}}
+
+/* --- ANIQUILADOR DE BOTONES FLOTANTES DE STREAMLIT CLOUD --- */
+.stDeployButton {{display: none !important;}}
+[data-testid="stToolbar"] {{display: none !important;}}
+[data-testid="stDecoration"] {{display: none !important;}}
+#creatorBadge {{display: none !important;}}
+div[data-testid="viewerBadge"] {{display: none !important;}}
+div[class^="viewerBadge"] {{display: none !important;}}
+.viewerBadge_container__1QSob {{display: none !important;}}
 
 .stApp {{
     {'background-image: url("data:image/png;base64,' + fondo_b64 + '");' if fondo_b64 else ''}
