@@ -46,7 +46,15 @@ col_config = db["configuracion"]
 col_ventas = db["ventas"] 
 col_carritos = db["carritos_temporales"] 
 
-# --- MIGRACIÓN AUTOMÁTICA DE APARTADOS VIEJOS ---
+# ---------------- MIGRACIÓN DE PROMOS E INICIALIZACIÓN ----------------
+config_promos = col_config.find_one({"_id": "promociones"})
+if not config_promos:
+    config_promos = {
+        "volumen": [{"id": str(uuid.uuid4())[:8], "categoria": "Carta", "min_piezas": 5, "precio_fijo": 40.0, "activa": True}],
+        "monto": [{"id": str(uuid.uuid4())[:8], "min_total": 2000.0, "porcentaje": 10.0, "activa": True}]
+    }
+    col_config.insert_one({"_id": "promociones", **config_promos})
+
 viejos = col_apartados.find({"fecha_vencimiento": {"$exists": False}})
 for v in viejos:
     fv = v.get("fecha_apartado", hora_qro()) + timedelta(days=3)
@@ -166,6 +174,7 @@ mantenimiento_base_datos()
 categorias = ["Todos", "Pyrus 🔥", "Aquos 💧", "Ventus 🍃", "Darkus 🌑", "Haos ✨", "Subterra 🪨"]
 materiales = ["Todas", "Metálica", "Cartón"]
 simbolos_core = ["Todos", "Fist ✊", "Flaming Fist 🔥✊", "Shield 🛡️", "Magic Shield ✨🛡️", "Helix 🧬"]
+tipos_producto = ["Bakugan", "Trampa", "Carta", "BakuCore", "Vehículo", "Armamento", "BakuTech", "Extra", "Set de Batalla", "Deka"]
 
 # =====================================================================
 # =========================== MENÚ LATERAL ============================
@@ -212,7 +221,7 @@ if es_admin_url:
         if st.sidebar.button("🚪 Cerrar Sesión"):
             st.session_state.admin_autenticado = False
             st.rerun()
-        vista_admin = st.sidebar.radio("Opciones de Administrador", ["Ver Catálogo", "➕ Agregar Producto", "📋 Ver Apartados", "📊 Finanzas y Ventas", "🎨 Personalizar Página"])
+        vista_admin = st.sidebar.radio("Opciones de Administrador", ["Ver Catálogo", "➕ Agregar Producto", "📋 Ver Apartados", "📊 Finanzas y Ventas", "🎨 Personalizar Página", "🎁 Gestor de Promociones"])
 
 st.sidebar.markdown("<div style='height: 400px;'></div>", unsafe_allow_html=True)
 
@@ -220,7 +229,68 @@ st.sidebar.markdown("<div style='height: 400px;'></div>", unsafe_allow_html=True
 # ======================== PANTALLA PRINCIPAL =========================
 # =====================================================================
 
-if vista_admin == "📊 Finanzas y Ventas":
+if vista_admin == "🎁 Gestor de Promociones":
+    st.title("🎁 Gestor de Promociones")
+    st.markdown("Activa, desactiva o crea nuevas reglas para que se apliquen en automático al carrito de tus clientes.")
+    
+    st.markdown("### ➕ Crear Nueva Promoción")
+    with st.container():
+        col_t1, col_t2 = st.columns(2)
+        with col_t1:
+            with st.expander("📦 Descuento por Volumen (Categoría a Precio Fijo)"):
+                cat_nueva = st.selectbox("Categoría que recibe el descuento", tipos_producto)
+                min_p = st.number_input("Cantidad mínima de piezas para activar", min_value=1, value=5)
+                prec_f = st.number_input("Precio especial c/u ($)", min_value=1.0, value=40.0)
+                if st.button("Guardar Promo de Volumen"):
+                    config_promos["volumen"].append({"id": str(uuid.uuid4())[:8], "categoria": cat_nueva, "min_piezas": min_p, "precio_fijo": prec_f, "activa": True})
+                    col_config.update_one({"_id": "promociones"}, {"$set": config_promos})
+                    st.success("¡Promoción agregada!")
+                    st.rerun()
+        with col_t2:
+            with st.expander("💰 Descuento por Monto Global (% de Descuento)"):
+                min_t = st.number_input("Monto mínimo de compra ($)", min_value=1.0, value=2000.0)
+                pct_d = st.number_input("Porcentaje de Descuento (%)", min_value=1, max_value=99, value=10)
+                if st.button("Guardar Promo de Monto"):
+                    config_promos["monto"].append({"id": str(uuid.uuid4())[:8], "min_total": min_t, "porcentaje": pct_d, "activa": True})
+                    col_config.update_one({"_id": "promociones"}, {"$set": config_promos})
+                    st.success("¡Promoción agregada!")
+                    st.rerun()
+                    
+    st.markdown("---")
+    st.markdown("### 🟢 Promociones Registradas")
+    cambios = False
+    
+    if config_promos.get("volumen"):
+        st.markdown("#### 📦 Promociones por Volumen Activas/Inactivas")
+        for i, promo in enumerate(config_promos["volumen"]):
+            c1, c2, c3 = st.columns([6, 2, 2])
+            c1.info(f"Si llevan **{promo['min_piezas']} o más {promo['categoria']}s**, cuestan **${promo['precio_fijo']:,.2f} c/u**")
+            activa = c2.toggle("Activada", value=promo["activa"], key=f"tg_v_{promo['id']}")
+            if activa != promo["activa"]:
+                config_promos["volumen"][i]["activa"] = activa
+                cambios = True
+            if c3.button("🗑️ Eliminar", key=f"dl_v_{promo['id']}"):
+                config_promos["volumen"].pop(i)
+                cambios = True
+                
+    if config_promos.get("monto"):
+        st.markdown("#### 💰 Promociones por Monto Activas/Inactivas")
+        for i, promo in enumerate(config_promos["monto"]):
+            c1, c2, c3 = st.columns([6, 2, 2])
+            c1.info(f"Si la compra es mayor a **${promo['min_total']:,.2f}**, aplicar **{promo['porcentaje']}% de descuento**")
+            activa = c2.toggle("Activada", value=promo["activa"], key=f"tg_m_{promo['id']}")
+            if activa != promo["activa"]:
+                config_promos["monto"][i]["activa"] = activa
+                cambios = True
+            if c3.button("🗑️ Eliminar", key=f"dl_m_{promo['id']}"):
+                config_promos["monto"].pop(i)
+                cambios = True
+                
+    if cambios:
+        col_config.update_one({"_id": "promociones"}, {"$set": config_promos})
+        st.rerun()
+
+elif vista_admin == "📊 Finanzas y Ventas":
     st.title("📊 Panel de Analítica Financiera")
     ventas = list(col_ventas.find({}))
     if not ventas:
@@ -271,14 +341,10 @@ elif vista_admin == "🎨 Personalizar Página":
 elif vista_admin == "➕ Agregar Producto":
     st.title("🛠️ Agregar nuevo producto")
     
-    tipo_prod = st.selectbox("Tipo de Producto", [
-        "Bakugan", "Trampa", "Carta", "BakuCore", "Vehículo", "Armamento", "BakuTech", "Extra", "Set de Batalla", "Deka"
-    ])
-    
+    tipo_prod = st.selectbox("Tipo de Producto", tipos_producto)
     nombre = st.text_input("Nombre / Descripción principal")
     
     col1, col2, col3 = st.columns(3)
-    
     tipos_con_atributo = ["Bakugan", "Trampa", "Vehículo", "Armamento", "BakuTech", "Set de Batalla", "Deka"]
     
     with col1: atributo_form = st.selectbox("Atributo", categorias[1:], disabled=(tipo_prod not in tipos_con_atributo)) 
@@ -309,16 +375,13 @@ elif vista_admin == "➕ Agregar Producto":
         if nombre and (imagenes_subidas or imagenes_detalle_subidas) and (precio > 0 or precio_detalle > 0):
             lista_imagenes_b64 = [comprimir_imagen(img) for img in imagenes_subidas[:6]] if imagenes_subidas else []
             lista_imagenes_detalle_b64 = [comprimir_imagen(img) for img in imagenes_detalle_subidas[:6]] if imagenes_detalle_subidas else []
-            
-            if con_detalle and not lista_imagenes_detalle_b64:
-                lista_imagenes_detalle_b64 = lista_imagenes_b64
+            if con_detalle and not lista_imagenes_detalle_b64: lista_imagenes_detalle_b64 = lista_imagenes_b64
                 
             nuevo_prod = {
                 "tipo": tipo_prod, "nombre": nombre, "precio": precio, "stock": stock,
                 "precio_detalle": precio_detalle, "stock_detalle": stock_detalle, "detalle": detalle_prod,
                 "imagenes_b64": lista_imagenes_b64, "imagenes_detalle_b64": lista_imagenes_detalle_b64
             }
-            
             if tipo_prod in tipos_con_atributo: nuevo_prod["atributo"] = atributo_form
             elif tipo_prod == "Carta": nuevo_prod["material"] = material_form
             elif tipo_prod == "BakuCore": nuevo_prod["simbolo"] = simbolo_form
@@ -346,10 +409,8 @@ elif vista_admin == "📋 Ver Apartados":
             nombre_cliente = items[0].get("comprador_nombre", "Desconocido")
             st.markdown(f'<div class="tarjeta-cliente"><h4>👤 {nombre_cliente} | 📞 WA: {tel}</h4>', unsafe_allow_html=True)
             
-            total_cliente = 0
-            total_anticipo = 0
-            fechas_venc = []
-            nombres_items = []
+            total_cliente, total_anticipo = 0, 0
+            fechas_venc, nombres_items = [], []
             
             for item in items:
                 fecha_str = item["fecha_apartado"].strftime("%d/%m")
@@ -395,8 +456,7 @@ elif vista_admin == "📋 Ver Apartados":
                     dias_pro = st.number_input("Días Extra", min_value=0, step=1, value=1, key=f"dias_{tel}")
                     if st.button("Aplicar", key=f"btn_pro_{tel}"):
                         ids_items = [item["_id"] for item in items]
-                        if nuevo_anticipo > 0:
-                            col_apartados.update_one({"_id": ids_items[0]}, {"$inc": {"anticipo": nuevo_anticipo}})
+                        if nuevo_anticipo > 0: col_apartados.update_one({"_id": ids_items[0]}, {"$inc": {"anticipo": nuevo_anticipo}})
                         if dias_pro > 0:
                             nueva_fecha = max(fechas_venc) + timedelta(days=dias_pro)
                             col_apartados.update_many({"_id": {"$in": ids_items}}, {"$set": {"fecha_vencimiento": nueva_fecha}})
@@ -416,15 +476,11 @@ elif vista_admin == "📋 Ver Apartados":
             with col_notif:
                 with st.expander("📱 Notificar"):
                     texto_expiracion = f"Hola {nombre_cliente}, te escribo de Baku-Market. Te recuerdo que tu apartado de {len(items)} piezas (Restante: ${restante:,.2f}) vence el {fecha_max_venc}. ¿Gusta que revisemos un abono/prórroga o procesamos tu envío?"
-                    
                     texto_cancelacion = f"Hola {nombre_cliente}. Te notificamos que el tiempo de tu apartado concluyó en Baku-Market y tu pedido de {len(items)} piezas ha sido cancelado, liberando el stock. ¡Gracias por tu comprensión!"
-                    
                     link_exp = f"https://wa.me/{tel.replace(' ', '')}?text={urllib.parse.quote(texto_expiracion)}"
                     link_canc = f"https://wa.me/{tel.replace(' ', '')}?text={urllib.parse.quote(texto_cancelacion)}"
-                    
                     st.markdown(f"[⚠️ Aviso Expiración]({link_exp})", unsafe_allow_html=True)
                     st.markdown(f"<br>[🚫 Aviso Cancelación]({link_canc})", unsafe_allow_html=True)
-
             st.markdown("</div>", unsafe_allow_html=True)
 
 else:
@@ -433,7 +489,6 @@ else:
     
     if es_modo_admin_catalogo:
         st.title("🛠️ Administrar Catálogo e Inventario")
-        
         todos_para_conteo = list(col_productos.find({}, {"stock": 1, "stock_detalle": 1}))
         total_publicaciones = len(todos_para_conteo)
         total_piezas_fisicas = sum(p.get("stock", 0) + p.get("stock_detalle", 0) for p in todos_para_conteo)
@@ -442,44 +497,72 @@ else:
         col_m1.metric("📦 Publicaciones Totales (Modelos)", total_publicaciones)
         col_m2.metric("🔢 Total de Piezas Físicas (Stock)", total_piezas_fisicas)
         st.markdown("---")
-        
         busqueda_texto = st.text_input("🔍 Buscar pieza por nombre...")
     else:
         col_tit, col_busc, col_cart = st.columns([1.5, 2, 1.5])
         with col_tit: st.markdown("### 🔥 Baku-Market") 
         with col_busc: busqueda_texto = st.text_input("Buscar", placeholder="🔍 Buscar...", label_visibility="collapsed")
         
-        # --- CARRITO Y PROMOCIONES ---
+        # --- CARRITO INTELIGENTE (MOTOR DE PROMOS) ---
         with col_cart:
             cantidad_carrito = len(st.session_state.carrito)
             
-            # --- 1. LÓGICA DE PROMOCIONES ---
-            # Promoción de Cartas
-            num_cartas = sum(1 for item in st.session_state.carrito if item.get("tipo") == "Carta")
-            promo_cartas_activa = num_cartas >= 5
+            # 1. Contar elementos por categoría
+            conteo_categorias = {}
+            for item in st.session_state.carrito:
+                t = item.get("tipo", "Bakugan")
+                conteo_categorias[t] = conteo_categorias.get(t, 0) + 1
+                
+            # 2. Identificar promos de volumen aplicables
+            promos_volumen_aplicables = {}
+            textos_promos_activas = []
             
-            # Calcular subtotal para ver si llegamos a los $2000
+            for p_vol in config_promos.get("volumen", []):
+                if p_vol["activa"] and conteo_categorias.get(p_vol["categoria"], 0) >= p_vol["min_piezas"]:
+                    promos_volumen_aplicables[p_vol["categoria"]] = p_vol["precio_fijo"]
+                    textos_promos_activas.append(f"🎉 ¡Promo: {p_vol['min_piezas']}+ {p_vol['categoria']}s a ${p_vol['precio_fijo']:,.2f} c/u!")
+                    
+            # 3. Aplicar volumen y calcular subtotal previo
+            items_procesados = []
             subtotal_previo = 0
             for item in st.session_state.carrito:
-                es_carta_promo = (promo_cartas_activa and item.get("tipo") == "Carta" and item['precio'] > 40.0)
-                subtotal_previo += 40.0 if es_carta_promo else item['precio']
-                
-            # Promoción del 10%
-            promo_10_activa = subtotal_previo >= 2000
-            
-            # 2. Calcular el total final cuidando que no se empalmen
-            total_carrito = 0
-            for item in st.session_state.carrito:
-                es_carta_promo = (promo_cartas_activa and item.get("tipo") == "Carta" and item['precio'] > 40.0)
-                
-                if es_carta_promo:
-                    precio_efectivo = 40.0 
-                elif promo_10_activa:
-                    precio_efectivo = item['precio'] * 0.90 
+                t = item.get("tipo", "Bakugan")
+                if t in promos_volumen_aplicables and item['precio'] > promos_volumen_aplicables[t]:
+                    precio_efec = promos_volumen_aplicables[t]
+                    es_promo_vol = True
                 else:
-                    precio_efectivo = item['precio']
+                    precio_efec = item['precio']
+                    es_promo_vol = False
                     
-                total_carrito += precio_efectivo
+                items_procesados.append({"item": item, "precio_efec": precio_efec, "es_promo_vol": es_promo_vol})
+                subtotal_previo += precio_efec
+                
+            # 4. Encontrar mejor promo por monto
+            mejor_promo_monto = None
+            mejor_pct = 0
+            for p_mon in config_promos.get("monto", []):
+                if p_mon["activa"] and subtotal_previo >= p_mon["min_total"]:
+                    if p_mon["porcentaje"] > mejor_pct:
+                        mejor_pct = p_mon["porcentaje"]
+                        mejor_promo_monto = p_mon
+                        
+            if mejor_promo_monto:
+                textos_promos_activas.append(f"🤑 ¡{mejor_promo_monto['porcentaje']}% OFF en tu carrito mayor a ${mejor_promo_monto['min_total']:,.2f}!")
+                
+            # 5. Calcular total final (Protegiendo empalmes)
+            total_carrito = 0
+            for ip in items_procesados:
+                if ip["es_promo_vol"]:
+                    ip["precio_final"] = ip["precio_efec"]
+                    ip["msg_wa"] = f" (Promo ${ip['precio_efec']})"
+                elif mejor_promo_monto:
+                    ip["precio_final"] = ip["precio_efec"] * (1 - (mejor_promo_monto["porcentaje"] / 100.0))
+                    ip["msg_wa"] = f" (-{mejor_promo_monto['porcentaje']}%)"
+                else:
+                    ip["precio_final"] = ip["precio_efec"]
+                    ip["msg_wa"] = ""
+                    
+                total_carrito += ip["precio_final"]
             
             with st.popover(f"🛒 Carrito ({cantidad_carrito}) - ${total_carrito:,.2f}", use_container_width=True):
                 if 'wa_link' in st.session_state:
@@ -490,27 +573,16 @@ else:
                         st.rerun()
                 
                 st.markdown("#### Resumen:")
-                
                 if cantidad_carrito > 0:
-                    if promo_cartas_activa:
-                        st.success("🎉 ¡Promo activa: Cartas a $40 c/u!")
-                    if promo_10_activa:
-                        st.info("🤑 ¡10% de desc. en tu carrito mayor a $2000!\n*(No aplica en envíos ni se suma con promo de cartas)*")
+                    for txt in textos_promos_activas: st.success(txt)
                         
-                    for i, item in enumerate(st.session_state.carrito):
+                    for i, ip in enumerate(items_procesados):
                         c1, c2 = st.columns([4, 1])
-                        
-                        es_carta_promo = (promo_cartas_activa and item.get("tipo") == "Carta" and item['precio'] > 40.0)
-                        
-                        if es_carta_promo:
-                            precio_item = 40.0
-                            texto_precio = f"~~${item['precio']}~~ **${precio_item:,.2f}**"
-                        elif promo_10_activa:
-                            precio_item = item['precio'] * 0.90
-                            texto_precio = f"~~${item['precio']}~~ **${precio_item:,.2f}**"
+                        item = ip["item"]
+                        if ip["precio_final"] < item['precio']:
+                            texto_precio = f"~~${item['precio']}~~ **${ip['precio_final']:,.2f}**"
                         else:
-                            precio_item = item['precio']
-                            texto_precio = f"**${precio_item:,.2f}**"
+                            texto_precio = f"**${ip['precio_final']:,.2f}**"
                             
                         c1.markdown(f"<span style='font-size:0.9em;'>{item['nombre']} - {texto_precio}</span>", unsafe_allow_html=True)
                         if c2.button("❌", key=f"del_cart_{i}_{item['_id']}"):
@@ -525,48 +597,25 @@ else:
                     
                     if st.button("Confirmar Apartado", use_container_width=True, type="primary"):
                         if nom and tel:
-                            for prod_cart in st.session_state.carrito:
-                                db_prod = col_productos.find_one({"_id": prod_cart["_id"]})
-                                campo_stock = "stock"
-                                if prod_cart.get("variante") == "detalle":
-                                    campo_stock = "stock_detalle" if "stock_detalle" in db_prod else "stock"
-                                
-                                es_carta_promo = (promo_cartas_activa and prod_cart.get("tipo") == "Carta" and prod_cart['precio'] > 40.0)
-                                
-                                if es_carta_promo:
-                                    precio_final_bd = 40.0
-                                elif promo_10_activa:
-                                    precio_final_bd = prod_cart['precio'] * 0.90
-                                else:
-                                    precio_final_bd = prod_cart['precio']
+                            for ip in items_procesados:
+                                item_bd = ip["item"]
+                                db_prod = col_productos.find_one({"_id": item_bd["_id"]})
+                                campo_stock = "stock_detalle" if item_bd.get("variante") == "detalle" and "stock_detalle" in db_prod else "stock"
                                     
                                 col_apartados.insert_one({
-                                    "producto_id": prod_cart["_id"], "nombre_producto": prod_cart["nombre"],
-                                    "precio": precio_final_bd, "comprador_nombre": nom, "comprador_telefono": tel,
-                                    "fecha_apartado": hora_qro(), 
-                                    "fecha_vencimiento": hora_qro() + timedelta(days=3), 
-                                    "campo_stock": campo_stock,
-                                    "anticipo": 0.0
+                                    "producto_id": item_bd["_id"], "nombre_producto": item_bd["nombre"],
+                                    "precio": ip["precio_final"], "comprador_nombre": nom, "comprador_telefono": tel,
+                                    "fecha_apartado": hora_qro(), "fecha_vencimiento": hora_qro() + timedelta(days=3), 
+                                    "campo_stock": campo_stock, "anticipo": 0.0
                                 })
-                                col_productos.update_one({"_id": prod_cart["_id"]}, {"$inc": {campo_stock: -1}})
+                                col_productos.update_one({"_id": item_bd["_id"]}, {"$inc": {campo_stock: -1}})
                             
                             texto_crudo = f"Hola, soy {nom}. Acabo de apartar {cantidad_carrito} piezas por un total de ${total_carrito:,.2f}.\n\nMis piezas son:\n"
-                            for item in st.session_state.carrito:
-                                es_carta_promo = (promo_cartas_activa and item.get("tipo") == "Carta" and item["precio"] > 40.0)
-                                if es_carta_promo:
-                                    precio_final_wa = 40.0
-                                    msg_promo = " (Promo $40)"
-                                elif promo_10_activa:
-                                    precio_final_wa = item['precio'] * 0.90
-                                    msg_promo = " (-10%)"
-                                else:
-                                    precio_final_wa = item["precio"]
-                                    msg_promo = ""
-                                    
-                                texto_crudo += f"👉 {item['nombre']} (${precio_final_wa:,.2f}){msg_promo}\n"
+                            for ip in items_procesados:
+                                texto_crudo += f"👉 {ip['item']['nombre']} (${ip['precio_final']:,.2f}){ip['msg_wa']}\n"
                             
-                            if promo_10_activa:
-                                texto_crudo += "\n*Nota: Estoy consciente de que el descuento del 10% aplicado no cubre gastos de envío.*"
+                            if mejor_promo_monto:
+                                texto_crudo += f"\n*Nota: Estoy consciente de que el descuento del {mejor_promo_monto['porcentaje']}% aplicado no cubre gastos de envío.*"
                             
                             texto_url = urllib.parse.quote(texto_crudo)
                             st.session_state.wa_link = f"https://wa.me/4462879839?text={texto_url}"
@@ -577,17 +626,25 @@ else:
                         else: st.warning("⚠️ Faltan datos.")
                 else: st.info("Carrito vacío.")
 
-        # ---------------- BANNER DE PROMOCIONES (VISUAL) ----------------
+        # ---------------- BANNER DINÁMICO DE PROMOCIONES ----------------
         if not es_modo_admin_catalogo:
-            st.markdown("""
-            <div style="background: linear-gradient(90deg, #ff416c, #ff4b2b); padding: 12px; border-radius: 8px; text-align: center; color: white; font-size: 15px; margin-bottom: 20px; box-shadow: 0 4px 10px rgba(0,0,0,0.2);">
-                ✨ <b>¡SÚPER PROMOS ACTIVAS!</b> ✨ <br class="mobile-break">
-                🃏 <b>5 o más Cartas a $40 c/u</b> &nbsp;|&nbsp; 🤑 <b>10% de DESCUENTO</b> en compras mayores a $2,000 <i>(No aplica en envío)</i>
-            </div>
-            <style>
-                @media (min-width: 768px) { .mobile-break { display: none; } }
-            </style>
-            """, unsafe_allow_html=True)
+            banner_frases = []
+            for p in config_promos.get("volumen", []):
+                if p["activa"]: banner_frases.append(f"📦 <b>{p['min_piezas']}+ {p['categoria']}s a ${p['precio_fijo']:,.2f} c/u</b>")
+            for p in config_promos.get("monto", []):
+                if p["activa"]: banner_frases.append(f"🤑 <b>{p['porcentaje']}% OFF</b> en compras > ${p['min_total']:,.2f}")
+                    
+            if banner_frases:
+                texto_banner = " &nbsp;|&nbsp; ".join(banner_frases)
+                st.markdown(f"""
+                <div style="background: linear-gradient(90deg, #ff416c, #ff4b2b); padding: 12px; border-radius: 8px; text-align: center; color: white; font-size: 15px; margin-bottom: 20px; box-shadow: 0 4px 10px rgba(0,0,0,0.2);">
+                    ✨ <b>¡PROMOS ACTIVAS!</b> ✨ <br class="mobile-break">
+                    {texto_banner}
+                </div>
+                <style>
+                    @media (min-width: 768px) {{ .mobile-break {{ display: none; }} }}
+                </style>
+                """, unsafe_allow_html=True)
             
     st.markdown("---")
 
@@ -603,10 +660,7 @@ else:
         elif tipo_busqueda == "BakuTech 🦾": query_base["tipo"] = "BakuTech"
         elif tipo_busqueda == "Sets de Batalla 🏟️": query_base["tipo"] = "Set de Batalla"
         elif tipo_busqueda == "Deka 🌐": query_base["tipo"] = "Deka"
-        
-        if sub_filtro != "Todos": 
-            query_base["atributo"] = sub_filtro
-            
+        if sub_filtro != "Todos": query_base["atributo"] = sub_filtro
     elif tipo_busqueda == "Cartas 🃏":
         query_base["tipo"] = "Carta"
         if sub_filtro != "Todas": query_base["material"] = sub_filtro
@@ -706,7 +760,6 @@ else:
                             
                         if stock_detalle > 0:
                             st.markdown(f"<span style='color:#f39c12; font-size: 0.9em;'>⚠️ **Detalle:** {texto_detalle}</span>", unsafe_allow_html=True)
-                            
                             cu_det = " c/u" if stock_detalle > 1 else ""
                             st.write(f"🟠 **C/Detalle:** ${precio_detalle:,.2f}{cu_det} (Disp: {stock_detalle})")
                             
