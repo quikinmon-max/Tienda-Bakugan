@@ -150,23 +150,25 @@ config_data = col_config.find_one({"_id": "sitio_prefs"})
 fondo_b64 = config_data.get("fondo_b64") if config_data else None
 logo_b64 = config_data.get("logo_b64") if config_data else None
 
-# --- EL CSS FRANCOTIRADOR DEFINITIVO ---
+# --- EL CSS QUIRÚRGICO MODO DIOS ---
 css_global = f"""
 <style>
-/* 1. Salvar la Hamburguesa (Filtros Móviles) y ocultar el fondo del header */
-header {{ background-color: transparent !important; box-shadow: none !important; visibility: visible !important; }}
-[data-testid="collapsedControl"] {{ display: flex !important; visibility: visible !important; }}
+/* 1. Mantenemos el encabezado para que no muera la hamburguesa, pero lo hacemos invisible */
+header[data-testid="stHeader"] {{
+    background: transparent !important;
+    box-shadow: none !important;
+}}
 
-/* 2. Asesinar Github, Fork, Deploy y Menú de los 3 puntitos */
-[data-testid="stToolbar"] {{ display: none !important; visibility: hidden !important; }}
-#MainMenu {{ display: none !important; visibility: hidden !important; }}
+/* 2. Ocultar TODO lo del lado derecho (Github, Deploy, 3 puntitos) */
 .stDeployButton {{ display: none !important; }}
+#MainMenu {{ display: none !important; }}
+header[data-testid="stHeader"] a {{ display: none !important; }}
+[data-testid="stToolbarActions"] {{ display: none !important; }}
 
-/* 3. Exterminar Botones Flotantes de la Nube (La N morada y el Barco Rojo) */
+/* 3. El exterminador definitivo de la N morada y el barquito rojo (Badges de la nube) */
+iframe {{ display: none !important; pointer-events: none !important; height: 0 !important; width: 0 !important; }}
+[class^="viewerBadge"] {{ display: none !important; }}
 footer {{ display: none !important; }}
-[class^="viewerBadge"] {{ display: none !important; opacity: 0 !important; pointer-events: none !important; }}
-/* Hack extremo: Elimina los iframes inyectados en las esquinas por Streamlit Cloud */
-iframe {{ display: none !important; opacity: 0 !important; pointer-events: none !important; height: 0 !important; width: 0 !important; }}
 
 .stApp {{
     {'background-image: url("data:image/png;base64,' + fondo_b64 + '");' if fondo_b64 else ''}
@@ -174,8 +176,8 @@ iframe {{ display: none !important; opacity: 0 !important; pointer-events: none 
 }}
 .block-container {{
     background-color: rgba(14, 17, 23, 0.85); 
-    padding-top: 2rem !important; padding-right: 2rem; padding-bottom: 2rem; padding-left: 2rem;
-    margin-top: 2rem; border-radius: 15px;
+    padding-top: 2.5rem !important; padding-right: 2rem; padding-bottom: 2rem; padding-left: 2rem;
+    margin-top: 1rem; border-radius: 15px;
 }}
 .tarjeta-cliente {{
     background-color: rgba(255, 255, 255, 0.1); padding: 15px; border-radius: 10px; margin-bottom: 10px; border: 1px solid #444;
@@ -194,7 +196,8 @@ iframe {{ display: none !important; opacity: 0 !important; pointer-events: none 
     object-fit: contain !important; border-radius: 8px; background-color: transparent; 
 }}
 @media (max-width: 768px) {{
-    .block-container {{ padding-top: 1rem !important; margin-top: 0rem; }}
+    /* ¡LA CLAVE ESTÁ AQUÍ! Le damos espacio arriba al contenido para no aplastar la hamburguesa */
+    .block-container {{ padding-top: 3.5rem !important; margin-top: 0rem; }}
     .stTextInput input {{ font-size: 16px !important; padding: 0.6rem !important; }}
     .stButton > button {{ font-size: 16px !important; padding: 0.5rem 1rem !important; min-height: 2.8rem !important; }}
     div[data-testid="stPopover"] > button {{ font-size: 16px !important; padding: 0.6rem 1rem !important; min-height: 2.8rem !important; }}
