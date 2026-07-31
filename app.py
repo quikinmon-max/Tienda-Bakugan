@@ -150,24 +150,23 @@ config_data = col_config.find_one({"_id": "sitio_prefs"})
 fondo_b64 = config_data.get("fondo_b64") if config_data else None
 logo_b64 = config_data.get("logo_b64") if config_data else None
 
-# --- ELIMINADOR DE BOTONES FLOTANTES DE LA NUBE ---
+# --- EL CSS FRANCOTIRADOR DEFINITIVO ---
 css_global = f"""
 <style>
-/* Ocultar Menú principal y pie de página genéricos */
-#MainMenu {{visibility: hidden;}}
-footer {{visibility: hidden;}}
+/* 1. Salvar la Hamburguesa (Filtros Móviles) y ocultar el fondo del header */
+header {{ background-color: transparent !important; box-shadow: none !important; visibility: visible !important; }}
+[data-testid="collapsedControl"] {{ display: flex !important; visibility: visible !important; }}
 
-/* Dejar el encabezado transparente para NO perder la hamburguesa de los filtros en celular */
-header {{background-color: transparent !important; box-shadow: none !important;}}
+/* 2. Asesinar Github, Fork, Deploy y Menú de los 3 puntitos */
+[data-testid="stToolbar"] {{ display: none !important; visibility: hidden !important; }}
+#MainMenu {{ display: none !important; visibility: hidden !important; }}
+.stDeployButton {{ display: none !important; }}
 
-/* --- ANIQUILADOR DE BOTONES FLOTANTES DE STREAMLIT CLOUD --- */
-.stDeployButton {{display: none !important;}}
-[data-testid="stToolbar"] {{display: none !important;}}
-[data-testid="stDecoration"] {{display: none !important;}}
-#creatorBadge {{display: none !important;}}
-div[data-testid="viewerBadge"] {{display: none !important;}}
-div[class^="viewerBadge"] {{display: none !important;}}
-.viewerBadge_container__1QSob {{display: none !important;}}
+/* 3. Exterminar Botones Flotantes de la Nube (La N morada y el Barco Rojo) */
+footer {{ display: none !important; }}
+[class^="viewerBadge"] {{ display: none !important; opacity: 0 !important; pointer-events: none !important; }}
+/* Hack extremo: Elimina los iframes inyectados en las esquinas por Streamlit Cloud */
+iframe {{ display: none !important; opacity: 0 !important; pointer-events: none !important; height: 0 !important; width: 0 !important; }}
 
 .stApp {{
     {'background-image: url("data:image/png;base64,' + fondo_b64 + '");' if fondo_b64 else ''}
