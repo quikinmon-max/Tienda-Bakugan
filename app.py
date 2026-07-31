@@ -30,6 +30,10 @@ if 'carrito' not in st.session_state:
 if 'rand_seed' not in st.session_state:
     st.session_state.rand_seed = random.randint(1, 999999)
 
+# Variable para la Paginación (Control de velocidad)
+if 'limite_items' not in st.session_state:
+    st.session_state.limite_items = 12
+
 # ---------------- CONEXIÓN A MONGODB ----------------
 @st.cache_resource
 def init_connection():
@@ -146,11 +150,13 @@ config_data = col_config.find_one({"_id": "sitio_prefs"})
 fondo_b64 = config_data.get("fondo_b64") if config_data else None
 logo_b64 = config_data.get("logo_b64") if config_data else None
 
+# --- SOLUCIÓN DEL MENÚ MÓVIL EN EL CSS ---
 css_global = f"""
 <style>
 #MainMenu {{visibility: hidden;}}
 footer {{visibility: hidden;}}
-header {{visibility: hidden;}}
+/* En lugar de esconder todo el encabezado, lo hacemos transparente para conservar el menú hamburguesa */
+header {{background-color: transparent !important; box-shadow: none !important;}}
 .stDeployButton {{display:none;}}
 
 .stApp {{
@@ -212,13 +218,18 @@ else:
     st.sidebar.markdown("### 🛒 Mi Tienda")
 
 st.sidebar.header("Filtros Avanzados")
-tipo_busqueda = st.sidebar.selectbox("¿Qué buscas?", ["Todo el Catálogo 🌍", "Bakugans 🔥", "Trampas 🪤", "Cartas 🃏", "BakuCores 🛑", "Vehículos 🏎️", "Armamentos ⚔️", "BakuTech 🦾", "Extras 🎁", "Sets de Batalla 🏟️", "Deka 🌐", "Piezas / Detalles 🛠️"])
+
+# Restablecer el límite de paginación si cambian los filtros
+def reset_limite():
+    st.session_state.limite_items = 12
+
+tipo_busqueda = st.sidebar.selectbox("¿Qué buscas?", ["Todo el Catálogo 🌍", "Bakugans 🔥", "Trampas 🪤", "Cartas 🃏", "BakuCores 🛑", "Vehículos 🏎️", "Armamentos ⚔️", "BakuTech 🦾", "Extras 🎁", "Sets de Batalla 🏟️", "Deka 🌐", "Piezas / Detalles 🛠️"], on_change=reset_limite)
 
 tipos_con_atributo_ui = ["Bakugans 🔥", "Trampas 🪤", "Vehículos 🏎️", "Armamentos ⚔️", "BakuTech 🦾", "Sets de Batalla 🏟️", "Deka 🌐"]
 
-if tipo_busqueda in tipos_con_atributo_ui: sub_filtro = st.sidebar.selectbox("Filtra por Atributo", categorias)
-elif tipo_busqueda == "Cartas 🃏": sub_filtro = st.sidebar.selectbox("Filtra por Material", materiales)
-elif tipo_busqueda == "BakuCores 🛑": sub_filtro = st.sidebar.selectbox("Filtra por Símbolo", simbolos_core)
+if tipo_busqueda in tipos_con_atributo_ui: sub_filtro = st.sidebar.selectbox("Filtra por Atributo", categorias, on_change=reset_limite)
+elif tipo_busqueda == "Cartas 🃏": sub_filtro = st.sidebar.selectbox("Filtra por Material", materiales, on_change=reset_limite)
+elif tipo_busqueda == "BakuCores 🛑": sub_filtro = st.sidebar.selectbox("Filtra por Símbolo", simbolos_core, on_change=reset_limite)
 else: sub_filtro = "Todos"
 
 es_admin_url = st.query_params.get("jefe") == "1"
@@ -694,7 +705,6 @@ else:
         if not es_modo_admin_catalogo:
             banner_frases = []
             if config_promos.get("promo_3x2", False): 
-                # Solo mostrar esto en el banner general si NO se está mostrando el grande de elegir regalo
                 elegibles_3x2_banner = [i for i in st.session_state.carrito if i.get("tipo") not in ["Carta", "BakuCore", "Extra"] and i.get("variante") != "detalle"]
                 if not (len(elegibles_3x2_banner) > 0 and len(elegibles_3x2_banner) % 3 == 2):
                     banner_frases.append("🌟 <b>¡SÚPER 3x2! Llevas 3, Pagas 2</b>")
@@ -767,11 +777,14 @@ else:
     rng = random.Random(st.session_state.rand_seed)
     rng.shuffle(productos_filtrados)
 
+    # ---------------- RENDERIZADO CON PAGINACIÓN ----------------
+    productos_a_mostrar = productos_filtrados[:st.session_state.limite_items]
+
     if not productos_filtrados:
         st.info("No encontramos piezas en esta categoría.")
     else:
         cols = st.columns(3)
-        for index, prod in enumerate(productos_filtrados):
+        for index, prod in enumerate(productos_a_mostrar):
             with cols[index % 3]:
                 st.markdown(f"### {prod['nombre']}")
                 
@@ -865,3 +878,10 @@ else:
                     if st.button("🗑️ Eliminar", key=f"del_{prod['_id']}", use_container_width=True):
                         col_productos.delete_one({"_id": prod["_id"]})
                         st.rerun()
+                        
+        # Botón para cargar más piezas
+        if len(productos_filtrados) > st.session_state.limite_items:
+            st.markdown("---")
+            if st.button("⬇️ Cargar más piezas", use_container_width=True, type="primary"):
+                st.session_state.limite_items += 12
+                st.rerun()
