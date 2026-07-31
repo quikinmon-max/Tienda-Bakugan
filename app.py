@@ -150,25 +150,32 @@ config_data = col_config.find_one({"_id": "sitio_prefs"})
 fondo_b64 = config_data.get("fondo_b64") if config_data else None
 logo_b64 = config_data.get("logo_b64") if config_data else None
 
-# --- EL CSS QUIRÚRGICO MODO DIOS ---
+# --- EL CSS EXTERMINADOR DEFINITIVO ---
 css_global = f"""
 <style>
-/* 1. Mantenemos el encabezado para que no muera la hamburguesa, pero lo hacemos invisible */
+/* 1. Mantenemos el encabezado visible pero transparente para salvar la hamburguesa */
 header[data-testid="stHeader"] {{
     background: transparent !important;
     box-shadow: none !important;
+    visibility: visible !important;
 }}
+[data-testid="collapsedControl"] {{ display: flex !important; visibility: visible !important; }}
 
-/* 2. Ocultar TODO lo del lado derecho (Github, Deploy, 3 puntitos) */
+/* 2. Ocultar Github, Fork, Deploy y Menú de los 3 puntitos */
 .stDeployButton {{ display: none !important; }}
 #MainMenu {{ display: none !important; }}
-header[data-testid="stHeader"] a {{ display: none !important; }}
 [data-testid="stToolbarActions"] {{ display: none !important; }}
 
-/* 3. El exterminador definitivo de la N morada y el barquito rojo (Badges de la nube) */
-iframe {{ display: none !important; pointer-events: none !important; height: 0 !important; width: 0 !important; }}
-[class^="viewerBadge"] {{ display: none !important; }}
-footer {{ display: none !important; }}
+/* 3. EXTERMINADOR NUCLEAR DE BADGES (N Morada y Barco Rojo) */
+footer {{ visibility: hidden !important; display: none !important; }}
+#creatorBadge {{ display: none !important; opacity: 0 !important; }}
+div[data-testid="viewerBadge"] {{ display: none !important; opacity: 0 !important; }}
+div[class*="viewerBadge"] {{ display: none !important; opacity: 0 !important; }}
+div[class*="CreatorBadge"] {{ display: none !important; opacity: 0 !important; }}
+a[href*="streamlit.io/cloud"] {{ display: none !important; pointer-events: none !important; }}
+/* Bloquea iframes flotantes de badges */
+iframe[title*="badge"] {{ display: none !important; opacity: 0 !important; pointer-events: none !important; }}
+iframe[src*="badge"] {{ display: none !important; opacity: 0 !important; pointer-events: none !important; }}
 
 .stApp {{
     {'background-image: url("data:image/png;base64,' + fondo_b64 + '");' if fondo_b64 else ''}
@@ -196,7 +203,6 @@ footer {{ display: none !important; }}
     object-fit: contain !important; border-radius: 8px; background-color: transparent; 
 }}
 @media (max-width: 768px) {{
-    /* ¡LA CLAVE ESTÁ AQUÍ! Le damos espacio arriba al contenido para no aplastar la hamburguesa */
     .block-container {{ padding-top: 3.5rem !important; margin-top: 0rem; }}
     .stTextInput input {{ font-size: 16px !important; padding: 0.6rem !important; }}
     .stButton > button {{ font-size: 16px !important; padding: 0.5rem 1rem !important; min-height: 2.8rem !important; }}
