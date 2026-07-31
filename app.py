@@ -21,7 +21,6 @@ st.set_page_config(
 
 # ---------------- CONFIGURACIÓN EXACTA DE TIEMPO (QUERÉTARO) ----------------
 def hora_qro():
-    """Calcula la hora exacta de Querétaro (UTC-6) sin importar dónde esté el servidor"""
     return datetime.utcnow() - timedelta(hours=6)
 
 # ---------------- INICIALIZAR MEMORIA Y SEMILLA ALEATORIA ----------------
@@ -51,9 +50,13 @@ config_promos = col_config.find_one({"_id": "promociones"})
 if not config_promos:
     config_promos = {
         "volumen": [{"id": str(uuid.uuid4())[:8], "categoria": "Carta", "min_piezas": 5, "precio_fijo": 40.0, "activa": True}],
-        "monto": [{"id": str(uuid.uuid4())[:8], "min_total": 2000.0, "porcentaje": 10.0, "activa": True}]
+        "monto": [{"id": str(uuid.uuid4())[:8], "min_total": 2000.0, "porcentaje": 10.0, "activa": True}],
+        "promo_3x2": False
     }
     col_config.insert_one({"_id": "promociones", **config_promos})
+elif "promo_3x2" not in config_promos:
+    config_promos["promo_3x2"] = False
+    col_config.update_one({"_id": "promociones"}, {"$set": {"promo_3x2": False}})
 
 viejos = col_apartados.find({"fecha_vencimiento": {"$exists": False}})
 for v in viejos:
@@ -85,7 +88,6 @@ def guardar_carrito():
 if 'admin_autenticado' not in st.session_state:
     st.session_state.admin_autenticado = False
 
-# ---------------- MOTOR DE COMPRESIÓN DE IMÁGENES ----------------
 def comprimir_imagen(img_file):
     img_bytes = img_file.getvalue()
     img = Image.open(io.BytesIO(img_bytes))
@@ -96,7 +98,6 @@ def comprimir_imagen(img_file):
     img.save(buffer, format="JPEG", quality=70)
     return base64.b64encode(buffer.getvalue()).decode("utf-8")
 
-# ---------------- FUNCIÓN DE AMPLIACIÓN DE FOTOS (MODAL) ----------------
 @st.dialog("🔍 Modo Detalle")
 def abrir_zoom(nombre_prod, imagenes_b64):
     st.markdown(f"### {nombre_prod}")
@@ -108,14 +109,12 @@ def abrir_zoom(nombre_prod, imagenes_b64):
     if len(imagenes_b64) > 1:
         st.markdown("<p style='text-align: center; color: #aaa; font-size: 14px; margin-top: 10px;'>👉 Desliza para ver más</p>", unsafe_allow_html=True)
 
-# ---------------- CARGAR DISEÑO PERSONALIZADO (FONDO Y CSS) ----------------
 config_data = col_config.find_one({"_id": "sitio_prefs"})
 fondo_b64 = config_data.get("fondo_b64") if config_data else None
 logo_b64 = config_data.get("logo_b64") if config_data else None
 
 css_global = f"""
 <style>
-/* --- OCULTAR RASTROS DE STREAMLIT (ESTILO MERCADO LIBRE) --- */
 #MainMenu {{visibility: hidden;}}
 footer {{visibility: hidden;}}
 header {{visibility: hidden;}}
@@ -156,7 +155,6 @@ header {{visibility: hidden;}}
 """
 st.markdown(css_global, unsafe_allow_html=True)
 
-# ---------------- MANTENIMIENTO INTELIGENTE ----------------
 def mantenimiento_base_datos():
     ahora = hora_qro()
     vencidos = col_apartados.find({"fecha_vencimiento": {"$lt": ahora}})
@@ -170,15 +168,10 @@ def mantenimiento_base_datos():
 
 mantenimiento_base_datos()
 
-# ---------------- VARIABLES GLOBALES ----------------
 categorias = ["Todos", "Pyrus 🔥", "Aquos 💧", "Ventus 🍃", "Darkus 🌑", "Haos ✨", "Subterra 🪨"]
 materiales = ["Todas", "Metálica", "Cartón"]
 simbolos_core = ["Todos", "Fist ✊", "Flaming Fist 🔥✊", "Shield 🛡️", "Magic Shield ✨🛡️", "Helix 🧬"]
 tipos_producto = ["Bakugan", "Trampa", "Carta", "BakuCore", "Vehículo", "Armamento", "BakuTech", "Extra", "Set de Batalla", "Deka"]
-
-# =====================================================================
-# =========================== MENÚ LATERAL ============================
-# =====================================================================
 
 if logo_b64:
     st.sidebar.markdown(f'<style>.logo-celular {{ width: 100%; border-radius: 8px; margin-bottom: 10px; }} @media (max-width: 768px) {{ .logo-celular {{ width: 45%; margin-left: auto; margin-right: auto; display: block; }} }} </style> <img src="data:image/png;base64,{logo_b64}" class="logo-celular">', unsafe_allow_html=True)
@@ -186,22 +179,14 @@ else:
     st.sidebar.markdown("### 🛒 Mi Tienda")
 
 st.sidebar.header("Filtros Avanzados")
+tipo_busqueda = st.sidebar.selectbox("¿Qué buscas?", ["Todo el Catálogo 🌍", "Bakugans 🔥", "Trampas 🪤", "Cartas 🃏", "BakuCores 🛑", "Vehículos 🏎️", "Armamentos ⚔️", "BakuTech 🦾", "Extras 🎁", "Sets de Batalla 🏟️", "Deka 🌐", "Piezas / Detalles 🛠️"])
 
-tipo_busqueda = st.sidebar.selectbox("¿Qué buscas?", [
-    "Todo el Catálogo 🌍", "Bakugans 🔥", "Trampas 🪤", "Cartas 🃏", "BakuCores 🛑", "Vehículos 🏎️", "Armamentos ⚔️", "BakuTech 🦾", "Extras 🎁", "Sets de Batalla 🏟️", "Deka 🌐", "Piezas / Detalles 🛠️"
-])
-
-# --- FILTROS DE ATRIBUTO DESBLOQUEADOS ---
 tipos_con_atributo_ui = ["Bakugans 🔥", "Trampas 🪤", "Vehículos 🏎️", "Armamentos ⚔️", "BakuTech 🦾", "Sets de Batalla 🏟️", "Deka 🌐"]
 
-if tipo_busqueda in tipos_con_atributo_ui: 
-    sub_filtro = st.sidebar.selectbox("Filtra por Atributo", categorias)
-elif tipo_busqueda == "Cartas 🃏": 
-    sub_filtro = st.sidebar.selectbox("Filtra por Material", materiales)
-elif tipo_busqueda == "BakuCores 🛑": 
-    sub_filtro = st.sidebar.selectbox("Filtra por Símbolo", simbolos_core)
-else: 
-    sub_filtro = "Todos"
+if tipo_busqueda in tipos_con_atributo_ui: sub_filtro = st.sidebar.selectbox("Filtra por Atributo", categorias)
+elif tipo_busqueda == "Cartas 🃏": sub_filtro = st.sidebar.selectbox("Filtra por Material", materiales)
+elif tipo_busqueda == "BakuCores 🛑": sub_filtro = st.sidebar.selectbox("Filtra por Símbolo", simbolos_core)
+else: sub_filtro = "Todos"
 
 es_admin_url = st.query_params.get("jefe") == "1"
 vista_admin = "Catálogo" 
@@ -224,10 +209,6 @@ if es_admin_url:
         vista_admin = st.sidebar.radio("Opciones de Administrador", ["Ver Catálogo", "➕ Agregar Producto", "📋 Ver Apartados", "📊 Finanzas y Ventas", "🎨 Personalizar Página", "🎁 Gestor de Promociones"])
 
 st.sidebar.markdown("<div style='height: 400px;'></div>", unsafe_allow_html=True)
-
-# =====================================================================
-# ======================== PANTALLA PRINCIPAL =========================
-# =====================================================================
 
 if vista_admin == "🎁 Gestor de Promociones":
     st.title("🎁 Gestor de Promociones")
@@ -260,6 +241,14 @@ if vista_admin == "🎁 Gestor de Promociones":
     st.markdown("### 🟢 Promociones Registradas")
     cambios = False
     
+    st.markdown("#### 🌟 Promoción Estática 3x2")
+    c1_3x2, c2_3x2, _ = st.columns([6, 2, 2])
+    c1_3x2.info("Llevas 3, pagas 2 *(Se regala la pieza de menor valor. Excluye: Cartas, Extras, BakuCores y piezas con Detalle)*")
+    activa_3x2 = c2_3x2.toggle("Activada", value=config_promos.get("promo_3x2", False), key="tg_3x2")
+    if activa_3x2 != config_promos.get("promo_3x2", False):
+        config_promos["promo_3x2"] = activa_3x2
+        cambios = True
+
     if config_promos.get("volumen"):
         st.markdown("#### 📦 Promociones por Volumen Activas/Inactivas")
         for i, promo in enumerate(config_promos["volumen"]):
@@ -299,8 +288,7 @@ elif vista_admin == "📊 Finanzas y Ventas":
         hoy = hora_qro()
         def filtrar_por_fecha(dias):
             return [v for v in ventas if v["fecha_venta"] >= hoy - timedelta(days=dias)]
-        ventas_hoy = [v for v in ventas if v["fecha_venta"].date() == hoy.date()]
-        ventas_semana, ventas_mes, ventas_anio = filtrar_por_fecha(7), filtrar_por_fecha(30), filtrar_por_fecha(365)
+        ventas_hoy, ventas_semana, ventas_mes, ventas_anio = filtrar_por_fecha(0), filtrar_por_fecha(7), filtrar_por_fecha(30), filtrar_por_fecha(365)
         
         def calcular_metricas(lista_ventas):
             ingresos = sum(v.get("precio_total", 0) for v in lista_ventas)
@@ -340,7 +328,6 @@ elif vista_admin == "🎨 Personalizar Página":
 
 elif vista_admin == "➕ Agregar Producto":
     st.title("🛠️ Agregar nuevo producto")
-    
     tipo_prod = st.selectbox("Tipo de Producto", tipos_producto)
     nombre = st.text_input("Nombre / Descripción principal")
     
@@ -355,7 +342,6 @@ elif vista_admin == "➕ Agregar Producto":
     c_pn, c_sn = st.columns(2)
     with c_pn: precio = st.number_input("Precio Normal ($)", min_value=0.0, step=10.0)
     with c_sn: stock = st.number_input("Stock Normal", min_value=0, step=1, value=1)
-    
     imagenes_subidas = st.file_uploader("📸 Sube fotos de la pieza NORMAL", type=["png", "jpg", "jpeg"], accept_multiple_files=True)
     
     st.markdown("### 🟠 Piezas con Detalles (Desperfectos)")
@@ -484,7 +470,6 @@ elif vista_admin == "📋 Ver Apartados":
             st.markdown("</div>", unsafe_allow_html=True)
 
 else:
-    # --- VISTA DEL CATÁLOGO ---
     es_modo_admin_catalogo = st.session_state.admin_autenticado and vista_admin == "Ver Catálogo"
     
     if es_modo_admin_catalogo:
@@ -503,17 +488,27 @@ else:
         with col_tit: st.markdown("### 🔥 Baku-Market") 
         with col_busc: busqueda_texto = st.text_input("Buscar", placeholder="🔍 Buscar...", label_visibility="collapsed")
         
-        # --- CARRITO INTELIGENTE (MOTOR DE PROMOS) ---
+        # --- CARRITO INTELIGENTE (MOTOR DE PROMOS + 3x2 ESTÁTICO) ---
         with col_cart:
             cantidad_carrito = len(st.session_state.carrito)
             
-            # 1. Contar elementos por categoría
-            conteo_categorias = {}
+            # 1. Preparar lista de procesamiento
+            items_procesados = []
             for item in st.session_state.carrito:
-                t = item.get("tipo", "Bakugan")
+                items_procesados.append({
+                    "item": item, 
+                    "precio_efec": item['precio'], 
+                    "es_promo_vol": False, 
+                    "es_promo_3x2": False,
+                    "msg_wa": ""
+                })
+            
+            # 2. Promociones de Volumen (Cartas a $40, etc.)
+            conteo_categorias = {}
+            for ip in items_procesados:
+                t = ip["item"].get("tipo", "Bakugan")
                 conteo_categorias[t] = conteo_categorias.get(t, 0) + 1
                 
-            # 2. Identificar promos de volumen aplicables
             promos_volumen_aplicables = {}
             textos_promos_activas = []
             
@@ -522,22 +517,40 @@ else:
                     promos_volumen_aplicables[p_vol["categoria"]] = p_vol["precio_fijo"]
                     textos_promos_activas.append(f"🎉 ¡Promo: {p_vol['min_piezas']}+ {p_vol['categoria']}s a ${p_vol['precio_fijo']:,.2f} c/u!")
                     
-            # 3. Aplicar volumen y calcular subtotal previo
-            items_procesados = []
-            subtotal_previo = 0
-            for item in st.session_state.carrito:
-                t = item.get("tipo", "Bakugan")
-                if t in promos_volumen_aplicables and item['precio'] > promos_volumen_aplicables[t]:
-                    precio_efec = promos_volumen_aplicables[t]
-                    es_promo_vol = True
-                else:
-                    precio_efec = item['precio']
-                    es_promo_vol = False
+            for ip in items_procesados:
+                t = ip["item"].get("tipo", "Bakugan")
+                if t in promos_volumen_aplicables and ip['item']['precio'] > promos_volumen_aplicables[t]:
+                    ip["precio_efec"] = promos_volumen_aplicables[t]
+                    ip["es_promo_vol"] = True
                     
-                items_procesados.append({"item": item, "precio_efec": precio_efec, "es_promo_vol": es_promo_vol})
-                subtotal_previo += precio_efec
+            # 3. Promoción Estática 3x2 (Llevas 3, pagas 2 - Regala el más barato)
+            if config_promos.get("promo_3x2", False):
+                # Filtrar elegibles para el 3x2
+                elegibles_3x2 = []
+                for ip in items_procesados:
+                    t = ip["item"].get("tipo", "Bakugan")
+                    v = ip["item"].get("variante", "normal")
+                    # Excluir Cartas, Cores, Extras y Detalles
+                    if t not in ["Carta", "BakuCore", "Extra"] and v != "detalle":
+                        elegibles_3x2.append(ip)
+                        
+                # Ordenar elegibles de mayor a menor precio
+                elegibles_3x2.sort(key=lambda x: x["precio_efec"], reverse=True)
                 
-            # 4. Encontrar mejor promo por monto
+                # Hacer gratis cada 3er elemento
+                piezas_regaladas = 0
+                for idx, ip in enumerate(elegibles_3x2):
+                    if (idx + 1) % 3 == 0:
+                        ip["precio_efec"] = 0.0
+                        ip["es_promo_3x2"] = True
+                        piezas_regaladas += 1
+                        
+                if piezas_regaladas > 0:
+                    textos_promos_activas.append("🌟 ¡Promo 3x2 Aplicada! (Te regalamos el más barato de tu tercia)")
+            
+            # 4. Calcular Subtotal previo para revisar la promo de Monto Total (10%)
+            subtotal_previo = sum(ip["precio_efec"] for ip in items_procesados)
+            
             mejor_promo_monto = None
             mejor_pct = 0
             for p_mon in config_promos.get("monto", []):
@@ -549,15 +562,22 @@ else:
             if mejor_promo_monto:
                 textos_promos_activas.append(f"🤑 ¡{mejor_promo_monto['porcentaje']}% OFF en tu carrito mayor a ${mejor_promo_monto['min_total']:,.2f}!")
                 
-            # 5. Calcular total final (Protegiendo empalmes)
+            # 5. Calcular Total Final combinando todo
             total_carrito = 0
             for ip in items_procesados:
-                if ip["es_promo_vol"]:
+                # Si se regaló en 3x2, queda en 0.
+                if ip["es_promo_3x2"]:
+                    ip["precio_final"] = 0.0
+                    ip["msg_wa"] = " (¡Gratis 3x2!)"
+                # Si aplica volumen y no fue 3x2, se le respeta el precio volumen (usualmente no se le empalma porcentaje extra)
+                elif ip["es_promo_vol"]:
                     ip["precio_final"] = ip["precio_efec"]
                     ip["msg_wa"] = f" (Promo ${ip['precio_efec']})"
+                # Si aplica la promo global de %
                 elif mejor_promo_monto:
                     ip["precio_final"] = ip["precio_efec"] * (1 - (mejor_promo_monto["porcentaje"] / 100.0))
                     ip["msg_wa"] = f" (-{mejor_promo_monto['porcentaje']}%)"
+                # Precio normal
                 else:
                     ip["precio_final"] = ip["precio_efec"]
                     ip["msg_wa"] = ""
@@ -581,6 +601,7 @@ else:
                         item = ip["item"]
                         if ip["precio_final"] < item['precio']:
                             texto_precio = f"~~${item['precio']}~~ **${ip['precio_final']:,.2f}**"
+                            if ip["precio_final"] == 0.0: texto_precio = f"~~${item['precio']}~~ **¡GRATIS!**"
                         else:
                             texto_precio = f"**${ip['precio_final']:,.2f}**"
                             
@@ -629,6 +650,7 @@ else:
         # ---------------- BANNER DINÁMICO DE PROMOCIONES ----------------
         if not es_modo_admin_catalogo:
             banner_frases = []
+            if config_promos.get("promo_3x2", False): banner_frases.append("🌟 <b>¡SÚPER 3x2! Llevas 3, Pagas 2</b>")
             for p in config_promos.get("volumen", []):
                 if p["activa"]: banner_frases.append(f"📦 <b>{p['min_piezas']}+ {p['categoria']}s a ${p['precio_fijo']:,.2f} c/u</b>")
             for p in config_promos.get("monto", []):
