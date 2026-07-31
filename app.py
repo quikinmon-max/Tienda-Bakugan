@@ -109,6 +109,39 @@ def abrir_zoom(nombre_prod, imagenes_b64):
     if len(imagenes_b64) > 1:
         st.markdown("<p style='text-align: center; color: #aaa; font-size: 14px; margin-top: 10px;'>👉 Desliza para ver más</p>", unsafe_allow_html=True)
 
+# ---------------- EL CEREBRO DEL MENÚ 3X2 ----------------
+@st.dialog("🎁 Menú de Regalos (Promo 3x2)")
+def modal_regalo_3x2(precio_max):
+    st.markdown(f"¡Felicidades! Como llevas 2 piezas, tienes derecho a elegir una tercera (valor hasta **${precio_max:,.2f}**) completamente **GRATIS**.")
+    st.info("👇 Estas son las piezas que aplican para tu regalo. ¡Elige rápido antes de que te la ganen!")
+    
+    query = {
+        "tipo": {"$nin": ["Carta", "BakuCore", "Extra"]},
+        "stock": {"$gt": 0},
+        "precio": {"$lte": precio_max}
+    }
+    regalos = list(col_productos.find(query).sort("precio", -1).limit(50))
+    
+    if not regalos:
+        st.warning("Uy, parece que en este momento no tenemos piezas disponibles en este rango de precio.")
+    else:
+        for reg in regalos:
+            c1, c2 = st.columns([3, 1])
+            c1.markdown(f"<span style='font-size:15px;'><b>{reg['nombre']}</b></span><br><span style='color:#2ecc71; font-weight:bold;'>${reg['precio']:,.2f}</span>", unsafe_allow_html=True)
+            if c2.button("🎁 Elegir", key=f"btn_regalo_{reg['_id']}", use_container_width=True):
+                st.session_state.carrito.append({
+                    "_id": reg["_id"], "nombre": reg["nombre"],
+                    "precio": reg["precio"], "variante": "normal", "tipo": reg.get("tipo", "Bakugan")
+                })
+                guardar_carrito()
+                if "abrir_modal_3x2" in st.session_state: st.session_state.abrir_modal_3x2 = False
+                st.rerun()
+                
+    st.markdown("---")
+    if st.button("Elegir más tarde / Cerrar Menú", use_container_width=True):
+        if "abrir_modal_3x2" in st.session_state: st.session_state.abrir_modal_3x2 = False
+        st.rerun()
+
 config_data = col_config.find_one({"_id": "sitio_prefs"})
 fondo_b64 = config_data.get("fondo_b64") if config_data else None
 logo_b64 = config_data.get("logo_b64") if config_data else None
@@ -243,7 +276,7 @@ if vista_admin == "🎁 Gestor de Promociones":
     
     st.markdown("#### 🌟 Promoción Estática 3x2")
     c1_3x2, c2_3x2, _ = st.columns([6, 2, 2])
-    c1_3x2.info("Llevas 3, pagas 2 *(Se regala la pieza de menor valor. Excluye: Cartas, Extras, BakuCores y piezas con Detalle)*")
+    c1_3x2.info("Llevas 3, pagas 2 *(Abre el menú para regalar la pieza de menor valor. Excluye: Cartas, Extras, BakuCores y piezas con Detalle)*")
     activa_3x2 = c2_3x2.toggle("Activada", value=config_promos.get("promo_3x2", False), key="tg_3x2")
     if activa_3x2 != config_promos.get("promo_3x2", False):
         config_promos["promo_3x2"] = activa_3x2
@@ -474,20 +507,16 @@ else:
     
     if es_modo_admin_catalogo:
         st.title("🛠️ Administrar Catálogo e Inventario")
-        
-        # --- NUEVO: Traer también precios para calcular el valor total del inventario ---
         todos_para_conteo = list(col_productos.find({}, {"stock": 1, "stock_detalle": 1, "precio": 1, "precio_detalle": 1}))
         total_publicaciones = len(todos_para_conteo)
         total_piezas_fisicas = sum(p.get("stock", 0) + p.get("stock_detalle", 0) for p in todos_para_conteo)
         
-        # --- NUEVO: Cálculo del valor estimado total ---
         valor_estimado_total = sum(
             (p.get("stock", 0) * p.get("precio", 0.0)) + 
             (p.get("stock_detalle", 0) * p.get("precio_detalle", 0.0)) 
             for p in todos_para_conteo
         )
         
-        # --- NUEVO: Acomodar en 3 columnas en lugar de 2 ---
         col_m1, col_m2, col_m3 = st.columns(3)
         col_m1.metric("📦 Publicaciones (Modelos)", total_publicaciones)
         col_m2.metric("🔢 Piezas Físicas (Stock)", total_piezas_fisicas)
@@ -500,22 +529,36 @@ else:
         with col_tit: st.markdown("### 🔥 Baku-Market") 
         with col_busc: busqueda_texto = st.text_input("Buscar", placeholder="🔍 Buscar...", label_visibility="collapsed")
         
-        # --- CARRITO INTELIGENTE (MOTOR DE PROMOS + 3x2 ESTÁTICO) ---
+        # ---------------- EVALUAR PROMOS Y BANNER 3x2 INTERACTIVO ----------------
+        if config_promos.get("promo_3x2", False):
+            elegibles_3x2 = [i for i in st.session_state.carrito if i.get("tipo") not in ["Carta", "BakuCore", "Extra"] and i.get("variante") != "detalle"]
+            
+            if len(elegibles_3x2) > 0 and len(elegibles_3x2) % 3 == 2:
+                precios_ordenados = sorted([i['precio'] for i in elegibles_3x2], reverse=True)
+                precio_maximo_regalo = min(precios_ordenados[-2:])
+                
+                # --- AUTO-ABRIR MODAL ---
+                if st.session_state.get("abrir_modal_3x2", False):
+                    modal_regalo_3x2(precio_maximo_regalo)
+                    
+                st.markdown(f"""
+                <div style="background: linear-gradient(90deg, #f1c40f, #f39c12); padding: 15px; border-radius: 8px; text-align: center; color: white; margin-bottom: 10px; box-shadow: 0 4px 10px rgba(0,0,0,0.2);">
+                    <h3 style="margin: 0; color: white;">🎁 ¡Tienes un 3x2 Activo!</h3>
+                    <p style="margin: 0; font-size: 16px;">Llevas 2 piezas elegibles, te regalamos la 3ra (hasta <b>${precio_maximo_regalo:,.2f}</b>)</p>
+                </div>
+                """, unsafe_allow_html=True)
+                
+                if st.button("👉 ABRIR MENÚ PARA ELEGIR MI REGALO 👈", type="primary", use_container_width=True):
+                    st.session_state.abrir_modal_3x2 = True
+                    st.rerun()
+
+        # --- CARRITO INTELIGENTE ---
         with col_cart:
             cantidad_carrito = len(st.session_state.carrito)
-            
-            # 1. Preparar lista de procesamiento
             items_procesados = []
             for item in st.session_state.carrito:
-                items_procesados.append({
-                    "item": item, 
-                    "precio_efec": item['precio'], 
-                    "es_promo_vol": False, 
-                    "es_promo_3x2": False,
-                    "msg_wa": ""
-                })
+                items_procesados.append({"item": item, "precio_efec": item['precio'], "es_promo_vol": False, "es_promo_3x2": False, "msg_wa": ""})
             
-            # 2. Promociones de Volumen (Cartas a $40, etc.)
             conteo_categorias = {}
             for ip in items_procesados:
                 t = ip["item"].get("tipo", "Bakugan")
@@ -535,34 +578,27 @@ else:
                     ip["precio_efec"] = promos_volumen_aplicables[t]
                     ip["es_promo_vol"] = True
                     
-            # 3. Promoción Estática 3x2 (Llevas 3, pagas 2 - Regala el más barato)
             if config_promos.get("promo_3x2", False):
-                # Filtrar elegibles para el 3x2
-                elegibles_3x2 = []
+                elegibles_cart_3x2 = []
                 for ip in items_procesados:
                     t = ip["item"].get("tipo", "Bakugan")
                     v = ip["item"].get("variante", "normal")
-                    # Excluir Cartas, Cores, Extras y Detalles
                     if t not in ["Carta", "BakuCore", "Extra"] and v != "detalle":
-                        elegibles_3x2.append(ip)
+                        elegibles_cart_3x2.append(ip)
                         
-                # Ordenar elegibles de mayor a menor precio
-                elegibles_3x2.sort(key=lambda x: x["precio_efec"], reverse=True)
+                elegibles_cart_3x2.sort(key=lambda x: x["precio_efec"], reverse=True)
                 
-                # Hacer gratis cada 3er elemento
                 piezas_regaladas = 0
-                for idx, ip in enumerate(elegibles_3x2):
+                for idx, ip in enumerate(elegibles_cart_3x2):
                     if (idx + 1) % 3 == 0:
                         ip["precio_efec"] = 0.0
                         ip["es_promo_3x2"] = True
                         piezas_regaladas += 1
                         
                 if piezas_regaladas > 0:
-                    textos_promos_activas.append("🌟 ¡Promo 3x2 Aplicada! (Te regalamos el más barato de tu tercia)")
+                    textos_promos_activas.append(f"🌟 ¡Promo 3x2 Aplicada! ({piezas_regaladas} pieza(s) gratis)")
             
-            # 4. Calcular Subtotal previo para revisar la promo de Monto Total (10%)
             subtotal_previo = sum(ip["precio_efec"] for ip in items_procesados)
-            
             mejor_promo_monto = None
             mejor_pct = 0
             for p_mon in config_promos.get("monto", []):
@@ -574,22 +610,17 @@ else:
             if mejor_promo_monto:
                 textos_promos_activas.append(f"🤑 ¡{mejor_promo_monto['porcentaje']}% OFF en tu carrito mayor a ${mejor_promo_monto['min_total']:,.2f}!")
                 
-            # 5. Calcular Total Final combinando todo
             total_carrito = 0
             for ip in items_procesados:
-                # Si se regaló en 3x2, queda en 0.
                 if ip["es_promo_3x2"]:
                     ip["precio_final"] = 0.0
                     ip["msg_wa"] = " (¡Gratis 3x2!)"
-                # Si aplica volumen y no fue 3x2, se le respeta el precio volumen (usualmente no se le empalma porcentaje extra)
                 elif ip["es_promo_vol"]:
                     ip["precio_final"] = ip["precio_efec"]
                     ip["msg_wa"] = f" (Promo ${ip['precio_efec']})"
-                # Si aplica la promo global de %
                 elif mejor_promo_monto:
                     ip["precio_final"] = ip["precio_efec"] * (1 - (mejor_promo_monto["porcentaje"] / 100.0))
                     ip["msg_wa"] = f" (-{mejor_promo_monto['porcentaje']}%)"
-                # Precio normal
                 else:
                     ip["precio_final"] = ip["precio_efec"]
                     ip["msg_wa"] = ""
@@ -659,10 +690,15 @@ else:
                         else: st.warning("⚠️ Faltan datos.")
                 else: st.info("Carrito vacío.")
 
-        # ---------------- BANNER DINÁMICO DE PROMOCIONES ----------------
+        # ---------------- BANNER INFORMATIVO (Si no se está usando el 3x2 interactivo) ----------------
         if not es_modo_admin_catalogo:
             banner_frases = []
-            if config_promos.get("promo_3x2", False): banner_frases.append("🌟 <b>¡SÚPER 3x2! Llevas 3, Pagas 2</b>")
+            if config_promos.get("promo_3x2", False): 
+                # Solo mostrar esto en el banner general si NO se está mostrando el grande de elegir regalo
+                elegibles_3x2_banner = [i for i in st.session_state.carrito if i.get("tipo") not in ["Carta", "BakuCore", "Extra"] and i.get("variante") != "detalle"]
+                if not (len(elegibles_3x2_banner) > 0 and len(elegibles_3x2_banner) % 3 == 2):
+                    banner_frases.append("🌟 <b>¡SÚPER 3x2! Llevas 3, Pagas 2</b>")
+                    
             for p in config_promos.get("volumen", []):
                 if p["activa"]: banner_frases.append(f"📦 <b>{p['min_piezas']}+ {p['categoria']}s a ${p['precio_fijo']:,.2f} c/u</b>")
             for p in config_promos.get("monto", []):
@@ -789,6 +825,13 @@ else:
                                 if st.button("🛒 Añadir", key=f"add_n_{prod['_id']}", use_container_width=True):
                                     st.session_state.carrito.append({"_id": prod["_id"], "nombre": f"{prod['nombre']}", "precio": precio_normal, "variante": "normal", "tipo": tipo_real})
                                     guardar_carrito() 
+                                    
+                                    # --- DETECCIÓN AUTOMÁTICA DEL 3x2 ---
+                                    if config_promos.get("promo_3x2", False) and tipo_real not in ["Carta", "BakuCore", "Extra"]:
+                                        eleg = [i for i in st.session_state.carrito if i.get("tipo") not in ["Carta", "BakuCore", "Extra"] and i.get("variante") != "detalle"]
+                                        if len(eleg) % 3 == 2:
+                                            st.session_state.abrir_modal_3x2 = True
+                                            
                                     st.rerun()
                             else: st.button("✅ En carrito (Máx)", disabled=True, key=f"max_n_{prod['_id']}", use_container_width=True)
                             
