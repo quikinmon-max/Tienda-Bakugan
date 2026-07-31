@@ -276,7 +276,7 @@ if vista_admin == "🎁 Gestor de Promociones":
     
     st.markdown("#### 🌟 Promoción Estática 3x2")
     c1_3x2, c2_3x2, _ = st.columns([6, 2, 2])
-    c1_3x2.info("Llevas 3, pagas 2 *(Abre el menú para regalar la pieza de menor valor. Excluye: Cartas, Extras, BakuCores y piezas con Detalle)*")
+    c1_3x2.info("Llevas 3, pagas 2 *(Excluye: Cartas, Extras, BakuCores y piezas con Detalle)*")
     activa_3x2 = c2_3x2.toggle("Activada", value=config_promos.get("promo_3x2", False), key="tg_3x2")
     if activa_3x2 != config_promos.get("promo_3x2", False):
         config_promos["promo_3x2"] = activa_3x2
