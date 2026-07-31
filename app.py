@@ -474,14 +474,26 @@ else:
     
     if es_modo_admin_catalogo:
         st.title("🛠️ Administrar Catálogo e Inventario")
-        todos_para_conteo = list(col_productos.find({}, {"stock": 1, "stock_detalle": 1}))
+        
+        # --- NUEVO: Traer también precios para calcular el valor total del inventario ---
+        todos_para_conteo = list(col_productos.find({}, {"stock": 1, "stock_detalle": 1, "precio": 1, "precio_detalle": 1}))
         total_publicaciones = len(todos_para_conteo)
         total_piezas_fisicas = sum(p.get("stock", 0) + p.get("stock_detalle", 0) for p in todos_para_conteo)
         
-        col_m1, col_m2 = st.columns(2)
-        col_m1.metric("📦 Publicaciones Totales (Modelos)", total_publicaciones)
-        col_m2.metric("🔢 Total de Piezas Físicas (Stock)", total_piezas_fisicas)
+        # --- NUEVO: Cálculo del valor estimado total ---
+        valor_estimado_total = sum(
+            (p.get("stock", 0) * p.get("precio", 0.0)) + 
+            (p.get("stock_detalle", 0) * p.get("precio_detalle", 0.0)) 
+            for p in todos_para_conteo
+        )
+        
+        # --- NUEVO: Acomodar en 3 columnas en lugar de 2 ---
+        col_m1, col_m2, col_m3 = st.columns(3)
+        col_m1.metric("📦 Publicaciones (Modelos)", total_publicaciones)
+        col_m2.metric("🔢 Piezas Físicas (Stock)", total_piezas_fisicas)
+        col_m3.metric("💰 Valor Total Inventario", f"${valor_estimado_total:,.2f}")
         st.markdown("---")
+        
         busqueda_texto = st.text_input("🔍 Buscar pieza por nombre...")
     else:
         col_tit, col_busc, col_cart = st.columns([1.5, 2, 1.5])
