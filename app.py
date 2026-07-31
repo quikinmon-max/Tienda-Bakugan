@@ -179,11 +179,11 @@ else:
 st.sidebar.header("Filtros Avanzados")
 
 tipo_busqueda = st.sidebar.selectbox("¿Qué buscas?", [
-    "Todo el Catálogo 🌍", "Bakugans 🔥", "Cartas 🃏", "BakuCores 🛑", "Vehículos 🏎️", "Armamentos ⚔️", "BakuTech 🦾", "Extras 🎁", "Sets de Batalla 🏟️", "Deka 🌐", "Piezas / Detalles 🛠️"
+    "Todo el Catálogo 🌍", "Bakugans 🔥", "Trampas 🪤", "Cartas 🃏", "BakuCores 🛑", "Vehículos 🏎️", "Armamentos ⚔️", "BakuTech 🦾", "Extras 🎁", "Sets de Batalla 🏟️", "Deka 🌐", "Piezas / Detalles 🛠️"
 ])
 
 # --- FILTROS DE ATRIBUTO DESBLOQUEADOS ---
-tipos_con_atributo_ui = ["Bakugans 🔥", "Vehículos 🏎️", "Armamentos ⚔️", "BakuTech 🦾", "Sets de Batalla 🏟️", "Deka 🌐"]
+tipos_con_atributo_ui = ["Bakugans 🔥", "Trampas 🪤", "Vehículos 🏎️", "Armamentos ⚔️", "BakuTech 🦾", "Sets de Batalla 🏟️", "Deka 🌐"]
 
 if tipo_busqueda in tipos_con_atributo_ui: 
     sub_filtro = st.sidebar.selectbox("Filtra por Atributo", categorias)
@@ -272,14 +272,14 @@ elif vista_admin == "➕ Agregar Producto":
     st.title("🛠️ Agregar nuevo producto")
     
     tipo_prod = st.selectbox("Tipo de Producto", [
-        "Bakugan", "Carta", "BakuCore", "Vehículo", "Armamento", "BakuTech", "Extra", "Set de Batalla", "Deka"
+        "Bakugan", "Trampa", "Carta", "BakuCore", "Vehículo", "Armamento", "BakuTech", "Extra", "Set de Batalla", "Deka"
     ])
     
     nombre = st.text_input("Nombre / Descripción principal")
     
     col1, col2, col3 = st.columns(3)
     
-    tipos_con_atributo = ["Bakugan", "Vehículo", "Armamento", "BakuTech", "Set de Batalla", "Deka"]
+    tipos_con_atributo = ["Bakugan", "Trampa", "Vehículo", "Armamento", "BakuTech", "Set de Batalla", "Deka"]
     
     with col1: atributo_form = st.selectbox("Atributo", categorias[1:], disabled=(tipo_prod not in tipos_con_atributo)) 
     with col2: material_form = st.selectbox("Material", materiales[1:], disabled=(tipo_prod != "Carta"))
@@ -597,6 +597,7 @@ else:
     # --- LÓGICA DE BÚSQUEDA ---
     if tipo_busqueda in tipos_con_atributo_ui:
         if tipo_busqueda == "Bakugans 🔥": query_base["$or"] = [{"tipo": "Bakugan"}, {"tipo": {"$exists": False}}]
+        elif tipo_busqueda == "Trampas 🪤": query_base["tipo"] = "Trampa"
         elif tipo_busqueda == "Vehículos 🏎️": query_base["tipo"] = "Vehículo"
         elif tipo_busqueda == "Armamentos ⚔️": query_base["tipo"] = "Armamento"
         elif tipo_busqueda == "BakuTech 🦾": query_base["tipo"] = "BakuTech"
