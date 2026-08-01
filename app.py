@@ -881,6 +881,11 @@ else:
                 if es_modo_admin_catalogo:
                     st.markdown("---")
                     with st.expander("✏️ Editar"):
+                        # --- NUEVA FUNCIÓN: EDITAR CATEGORÍA/TIPO ---
+                        tipo_actual = prod.get("tipo", "Bakugan")
+                        idx_tipo = tipos_producto.index(tipo_actual) if tipo_actual in tipos_producto else 0
+                        nuevo_tipo = st.selectbox("Categoría / Tipo", tipos_producto, index=idx_tipo, key=f"etipo_{prod['_id']}")
+
                         np = st.number_input("Precio N.", value=float(precio_normal), step=10.0, key=f"epn_{prod['_id']}")
                         ns = st.number_input("Stock N.", value=int(stock_normal), step=1, key=f"esn_{prod['_id']}")
                         ndp = st.number_input("Precio D.", value=float(precio_detalle), step=10.0, key=f"epd_{prod['_id']}")
@@ -889,6 +894,7 @@ else:
                         
                         if st.button("💾 Guardar", key=f"save_{prod['_id']}", use_container_width=True):
                             col_productos.update_one({"_id": prod["_id"]}, {"$set": {
+                                "tipo": nuevo_tipo,
                                 "precio": np, "stock": ns, "precio_detalle": ndp, "stock_detalle": nds, "detalle": ndtxt
                             }})
                             st.rerun()
