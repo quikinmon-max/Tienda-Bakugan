@@ -836,10 +836,11 @@ else:
                     stock_normal = 0
                     precio_normal = 0.0
                 
+                # --- AJUSTE QUIROPRÁCTICO DE MÁRGENES (Reduciendo espacios) ---
                 tipo_real = prod.get("tipo", "Bakugan")
-                if tipo_real == "Bakugan" or "atributo" in prod: st.write(f"**Atributo:** {prod.get('atributo', 'N/A')}")
-                elif tipo_real == "Carta": st.write(f"**Material:** {prod.get('material', 'N/A')}")
-                elif tipo_real == "BakuCore": st.write(f"**Símbolo:** {prod.get('simbolo', 'N/A')}")
+                if tipo_real == "Bakugan" or "atributo" in prod: st.markdown(f"<div style='margin-top: 5px; margin-bottom: -10px;'><b>Atributo:</b> {prod.get('atributo', 'N/A')}</div>", unsafe_allow_html=True)
+                elif tipo_real == "Carta": st.markdown(f"<div style='margin-top: 5px; margin-bottom: -10px;'><b>Material:</b> {prod.get('material', 'N/A')}</div>", unsafe_allow_html=True)
+                elif tipo_real == "BakuCore": st.markdown(f"<div style='margin-top: 5px; margin-bottom: -10px;'><b>Símbolo:</b> {prod.get('simbolo', 'N/A')}</div>", unsafe_allow_html=True)
                 
                 if not es_modo_admin_catalogo:
                     en_carrito_normal = sum(1 for item in st.session_state.carrito if item["_id"] == prod["_id"] and item.get("variante") == "normal")
@@ -879,9 +880,10 @@ else:
                             else: st.button("✅ Detalle en carrito", disabled=True, key=f"max_d_{prod['_id']}", use_container_width=True)
 
                 if es_modo_admin_catalogo:
-                    st.markdown("---")
+                    # --- NUEVA LÍNEA DIVISORIA COMPACTA ---
+                    st.markdown('<hr style="margin: 10px 0px; border: none; border-top: 1px solid rgba(255,255,255,0.2);">', unsafe_allow_html=True)
+                    
                     with st.expander("✏️ Editar"):
-                        # --- NUEVA FUNCIÓN: EDITAR CATEGORÍA/TIPO ---
                         tipo_actual = prod.get("tipo", "Bakugan")
                         idx_tipo = tipos_producto.index(tipo_actual) if tipo_actual in tipos_producto else 0
                         nuevo_tipo = st.selectbox("Categoría / Tipo", tipos_producto, index=idx_tipo, key=f"etipo_{prod['_id']}")
