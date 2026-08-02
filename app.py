@@ -7,7 +7,7 @@ import urllib.parse
 from datetime import datetime, timedelta
 from PIL import Image, ImageOps, ImageFile
 import io
-from bson.objectid import ObjectId  # <-- NUEVO: Necesario para manejar IDs con la Caché
+from bson.objectid import ObjectId
 
 # --- BLINDAJE PARA FOTOS PESADAS EN STREAMLIT CLOUD ---
 ImageFile.LOAD_TRUNCATED_IMAGES = True
@@ -31,6 +31,7 @@ if 'carrito' not in st.session_state:
 if 'rand_seed' not in st.session_state:
     st.session_state.rand_seed = random.randint(1, 999999)
 
+# Variable para la Paginación (Control de velocidad)
 if 'limite_items' not in st.session_state:
     st.session_state.limite_items = 12
 
@@ -49,17 +50,6 @@ col_config = db["configuracion"]
 col_ventas = db["ventas"] 
 col_carritos = db["carritos_temporales"] 
 
-# ---------------- CACHÉ DE INVENTARIO (MOTOR TURBO EN RAM) ----------------
-@st.cache_data(ttl=300, show_spinner=False)  # Guarda en RAM por 5 min o hasta que lo limpiemos manual
-def cargar_catalogo_completo():
-    items = list(col_productos.find({}))
-    for item in items:
-        item["_id"] = str(item["_id"])  # Convertimos a string para que Streamlit pueda cachearlo sin errores
-    return items
-
-def refrescar_inventario():
-    cargar_catalogo_completo.clear()
-
 # ---------------- MIGRACIÓN DE PROMOS E INICIALIZACIÓN ----------------
 config_promos = col_config.find_one({"_id": "promociones"})
 if not config_promos:
@@ -72,6 +62,11 @@ if not config_promos:
 elif "promo_3x2" not in config_promos:
     config_promos["promo_3x2"] = False
     col_config.update_one({"_id": "promociones"}, {"$set": {"promo_3x2": False}})
+
+viejos = col_apartados.find({"fecha_vencimiento": {"$exists": False}})
+for v in viejos:
+    fv = v.get("fecha_apartado", hora_qro()) + timedelta(days=3)
+    col_apartados.update_one({"_id": v["_id"]}, {"$set": {"fecha_vencimiento": fv, "anticipo": 0.0}})
 
 # ---------------- SISTEMA ANTICAÍDAS (CARRITO Y SESIÓN) ----------------
 if 'session_id' not in st.session_state:
@@ -119,16 +114,19 @@ def abrir_zoom(nombre_prod, imagenes_b64):
     if len(imagenes_b64) > 1:
         st.markdown("<p style='text-align: center; color: #aaa; font-size: 14px; margin-top: 10px;'>👉 Desliza para ver más</p>", unsafe_allow_html=True)
 
-# ---------------- EL CEREBRO DEL MENÚ 3X2 (Acelerado con Caché) ----------------
+# ---------------- EL CEREBRO DEL MENÚ 3X2 (Turbo) ----------------
 @st.dialog("🎁 Menú de Regalos (Promo 3x2)")
 def modal_regalo_3x2(precio_max):
     st.markdown(f"¡Felicidades! Como llevas 2 piezas, tienes derecho a elegir una tercera (valor hasta **${precio_max:,.2f}**) completamente **GRATIS**.")
     st.info("👇 Estas son las piezas que aplican para tu regalo. ¡Elige rápido antes de que te la ganen!")
     
-    # Búsqueda ultra rápida en RAM en lugar de MongoDB
-    catalogo_ram = cargar_catalogo_completo()
-    regalos = [p for p in catalogo_ram if p.get("tipo", "Bakugan") not in ["Carta", "BakuCore", "Extra"] and p.get("stock", 0) > 0 and p.get("precio", 0) <= precio_max]
-    regalos = sorted(regalos, key=lambda x: x["precio"], reverse=True)[:50]
+    query = {
+        "tipo": {"$nin": ["Carta", "BakuCore", "Extra"]},
+        "stock": {"$gt": 0},
+        "precio": {"$lte": precio_max}
+    }
+    # SOLO traemos el nombre, precio y tipo para el menú (súper veloz sin fotos)
+    regalos = list(col_productos.find(query, {"nombre": 1, "precio": 1, "tipo": 1}).sort("precio", -1).limit(50))
     
     if not regalos:
         st.warning("Uy, parece que en este momento no tenemos piezas disponibles en este rango de precio.")
@@ -136,9 +134,9 @@ def modal_regalo_3x2(precio_max):
         for reg in regalos:
             c1, c2 = st.columns([3, 1])
             c1.markdown(f"<span style='font-size:15px;'><b>{reg['nombre']}</b></span><br><span style='color:#2ecc71; font-weight:bold;'>${reg['precio']:,.2f}</span>", unsafe_allow_html=True)
-            if c2.button("🎁 Elegir", key=f"btn_regalo_{reg['_id']}", use_container_width=True):
+            if c2.button("🎁 Elegir", key=f"btn_regalo_{str(reg['_id'])}", use_container_width=True):
                 st.session_state.carrito.append({
-                    "_id": reg["_id"], "nombre": reg["nombre"],
+                    "_id": str(reg["_id"]), "nombre": reg["nombre"],
                     "precio": reg["precio"], "variante": "normal", "tipo": reg.get("tipo", "Bakugan")
                 })
                 guardar_carrito()
@@ -154,7 +152,6 @@ config_data = col_config.find_one({"_id": "sitio_prefs"})
 fondo_b64 = config_data.get("fondo_b64") if config_data else None
 logo_b64 = config_data.get("logo_b64") if config_data else None
 
-# --- CSS EXTERMINADOR DEFINITIVO + AJUSTES COMPACTOS ---
 css_global = f"""
 <style>
 header[data-testid="stHeader"] {{ background: transparent !important; box-shadow: none !important; visibility: visible !important; }}
@@ -214,7 +211,6 @@ def mantenimiento_base_datos():
             campo = doc.get("campo_stock", "stock")
             col_productos.update_one({"_id": doc["producto_id"]}, {"$inc": {campo: 1}})
             col_apartados.delete_one({"_id": doc["_id"]})
-        refrescar_inventario() # Al liberar stock, actualizamos la RAM
     
     limite_cart = hora_qro() - timedelta(days=1)
     col_carritos.delete_many({"fecha": {"$lt": limite_cart}})
@@ -429,7 +425,6 @@ elif vista_admin == "➕ Agregar Producto":
             elif tipo_prod == "BakuCore": nuevo_prod["simbolo"] = simbolo_form
                 
             col_productos.insert_one(nuevo_prod)
-            refrescar_inventario() # <-- ACTUALIZA LA CACHÉ
             st.success(f"¡{nombre} subido con éxito!")
             st.rerun() 
         else:
@@ -513,7 +508,6 @@ elif vista_admin == "📋 Ver Apartados":
                             campo = doc.get("campo_stock", "stock")
                             col_productos.update_one({"_id": doc["producto_id"]}, {"$inc": {campo: 1}})
                             col_apartados.delete_one({"_id": doc["_id"]})
-                        refrescar_inventario() # <-- ACTUALIZA LA CACHÉ
                         st.success("¡Cancelado!")
                         st.rerun()
 
@@ -530,18 +524,18 @@ elif vista_admin == "📋 Ver Apartados":
 else:
     es_modo_admin_catalogo = st.session_state.admin_autenticado and vista_admin == "Ver Catálogo"
     
-    # ---------------- DESCARGA DE CACHÉ ULTRA RÁPIDA ----------------
-    catalogo_ram = cargar_catalogo_completo()
-    
     if es_modo_admin_catalogo:
         st.title("🛠️ Administrar Catálogo e Inventario")
-        total_publicaciones = len(catalogo_ram)
-        total_piezas_fisicas = sum(p.get("stock", 0) + p.get("stock_detalle", 0) for p in catalogo_ram)
+        
+        # PROYECCIÓN EXTREMA: Consulta ultra rápida sin descargar fotos
+        todos_para_conteo = list(col_productos.find({}, {"stock": 1, "stock_detalle": 1, "precio": 1, "precio_detalle": 1}))
+        total_publicaciones = len(todos_para_conteo)
+        total_piezas_fisicas = sum(p.get("stock", 0) + p.get("stock_detalle", 0) for p in todos_para_conteo)
         
         valor_estimado_total = sum(
             (p.get("stock", 0) * p.get("precio", 0.0)) + 
             (p.get("stock_detalle", 0) * p.get("precio_detalle", 0.0)) 
-            for p in catalogo_ram
+            for p in todos_para_conteo
         )
         
         col_m1, col_m2, col_m3 = st.columns(3)
@@ -676,7 +670,7 @@ else:
                             texto_precio = f"**${ip['precio_final']:,.2f}**"
                             
                         c1.markdown(f"<span style='font-size:0.9em;'>{item['nombre']} - {texto_precio}</span>", unsafe_allow_html=True)
-                        if c2.button("❌", key=f"del_cart_{i}_{item['_id']}"):
+                        if c2.button("❌", key=f"del_cart_{i}_{str(item['_id'])}"):
                             st.session_state.carrito.pop(i)
                             guardar_carrito() 
                             st.rerun()
@@ -690,7 +684,7 @@ else:
                         if nom and tel:
                             for ip in items_procesados:
                                 item_bd = ip["item"]
-                                item_bd_id = ObjectId(item_bd["_id"]) # Recuperamos el ID real para Mongo
+                                item_bd_id = ObjectId(item_bd["_id"]) if isinstance(item_bd["_id"], str) else item_bd["_id"]
                                 db_prod = col_productos.find_one({"_id": item_bd_id})
                                 campo_stock = "stock_detalle" if item_bd.get("variante") == "detalle" and "stock_detalle" in db_prod else "stock"
                                     
@@ -714,7 +708,6 @@ else:
                             
                             st.session_state.carrito = [] 
                             guardar_carrito()
-                            refrescar_inventario() # <-- ACTUALIZA LA CACHÉ PARA LOS DEMÁS
                             st.rerun()
                         else: st.warning("⚠️ Faltan datos.")
                 else: st.info("Carrito vacío.")
@@ -746,45 +739,33 @@ else:
             
     st.markdown("---")
 
-    # ---------------- MOTOR DE BÚSQUEDA SÚPER RÁPIDO (EN RAM) ----------------
+    query_base = {}
+    if busqueda_texto: query_base["nombre"] = {"$regex": busqueda_texto, "$options": "i"}
+
+    # --- LÓGICA DE BÚSQUEDA ---
+    if tipo_busqueda in tipos_con_atributo_ui:
+        if tipo_busqueda == "Bakugans 🔥": query_base["$or"] = [{"tipo": "Bakugan"}, {"tipo": {"$exists": False}}]
+        elif tipo_busqueda == "Trampas 🪤": query_base["tipo"] = "Trampa"
+        elif tipo_busqueda == "Vehículos 🏎️": query_base["tipo"] = "Vehículo"
+        elif tipo_busqueda == "Armamentos ⚔️": query_base["tipo"] = "Armamento"
+        elif tipo_busqueda == "BakuTech 🦾": query_base["tipo"] = "BakuTech"
+        elif tipo_busqueda == "Sets de Batalla 🏟️": query_base["tipo"] = "Set de Batalla"
+        elif tipo_busqueda == "Deka 🌐": query_base["tipo"] = "Deka"
+        if sub_filtro != "Todos": query_base["atributo"] = sub_filtro
+    elif tipo_busqueda == "Cartas 🃏":
+        query_base["tipo"] = "Carta"
+        if sub_filtro != "Todas": query_base["material"] = sub_filtro
+    elif tipo_busqueda == "BakuCores 🛑": 
+        query_base["tipo"] = "BakuCore"
+        if sub_filtro != "Todos": query_base["simbolo"] = sub_filtro
+    elif tipo_busqueda == "Extras 🎁": 
+        query_base["tipo"] = "Extra"
+
+    # --- LA MAGIA ESTÁ AQUÍ: Traer listado entero PERO SIN DESCARGAR LAS FOTOS ---
+    productos_crudos = list(col_productos.find(query_base, {"imagenes_b64": 0, "imagenes_detalle_b64": 0, "imagen_b64": 0}))
     productos_filtrados = []
-    busqueda_low = busqueda_texto.lower() if busqueda_texto else ""
 
-    for prod in catalogo_ram:
-        # 1. Filtro de Texto
-        if busqueda_low and busqueda_low not in prod.get("nombre", "").lower():
-            continue
-
-        tipo_p = prod.get("tipo", "Bakugan")
-        incluir = True
-
-        # 2. Filtro de Categorías y Atributos
-        if tipo_busqueda in tipos_con_atributo_ui:
-            if tipo_busqueda == "Bakugans 🔥" and tipo_p != "Bakugan" and "tipo" in prod: incluir = False
-            elif tipo_busqueda == "Trampas 🪤" and tipo_p != "Trampa": incluir = False
-            elif tipo_busqueda == "Vehículos 🏎️" and tipo_p != "Vehículo": incluir = False
-            elif tipo_busqueda == "Armamentos ⚔️" and tipo_p != "Armamento": incluir = False
-            elif tipo_busqueda == "BakuTech 🦾" and tipo_p != "BakuTech": incluir = False
-            elif tipo_busqueda == "Sets de Batalla 🏟️" and tipo_p != "Set de Batalla": incluir = False
-            elif tipo_busqueda == "Deka 🌐" and tipo_p != "Deka": incluir = False
-
-            if incluir and sub_filtro != "Todos" and prod.get("atributo", "") != sub_filtro: incluir = False
-
-        elif tipo_busqueda == "Cartas 🃏":
-            if tipo_p != "Carta": incluir = False
-            if incluir and sub_filtro != "Todas" and prod.get("material", "") != sub_filtro: incluir = False
-
-        elif tipo_busqueda == "BakuCores 🛑":
-            if tipo_p != "BakuCore": incluir = False
-            if incluir and sub_filtro != "Todos" and prod.get("simbolo", "") != sub_filtro: incluir = False
-
-        elif tipo_busqueda == "Extras 🎁":
-            if tipo_p != "Extra": incluir = False
-
-        if not incluir:
-            continue
-
-        # 3. Filtro de Stock y Detalles
+    for prod in productos_crudos:
         stock_normal = prod.get('stock', 0)
         stock_detalle = prod.get('stock_detalle', 0)
         texto_detalle = prod.get('detalle', "")
@@ -808,15 +789,28 @@ else:
     rng = random.Random(st.session_state.rand_seed)
     rng.shuffle(productos_filtrados)
 
-    # ---------------- RENDERIZADO CON PAGINACIÓN ----------------
+    # ---------------- RENDERIZADO CON PAGINACIÓN INTELIGENTE ----------------
     productos_a_mostrar = productos_filtrados[:st.session_state.limite_items]
 
     if not productos_filtrados:
         st.info("No encontramos piezas en esta categoría.")
     else:
+        # --- CARGA PEREZOSA (Lazy Load): Buscar SOLO las fotos de los 12 seleccionados ---
+        if productos_a_mostrar:
+            ids_mostrar = [p["_id"] for p in productos_a_mostrar]
+            imagenes_extra = list(col_productos.find({"_id": {"$in": ids_mostrar}}, {"imagenes_b64": 1, "imagenes_detalle_b64": 1, "imagen_b64": 1}))
+            mapa_imgs = {img["_id"]: img for img in imagenes_extra}
+            
+            for p in productos_a_mostrar:
+                info_img = mapa_imgs.get(p["_id"], {})
+                if "imagenes_b64" in info_img: p["imagenes_b64"] = info_img["imagenes_b64"]
+                if "imagenes_detalle_b64" in info_img: p["imagenes_detalle_b64"] = info_img["imagenes_detalle_b64"]
+                if "imagen_b64" in info_img: p["imagen_b64"] = info_img["imagen_b64"]
+
         cols = st.columns(3)
         for index, prod in enumerate(productos_a_mostrar):
             with cols[index % 3]:
+                str_id = str(prod["_id"])  # Conversión segura para las llaves de los botones
                 st.markdown(f"### {prod['nombre']}")
                 
                 if tipo_busqueda == "Piezas / Detalles 🛠️":
@@ -835,7 +829,7 @@ else:
                     html_galeria += '</div>'
                     st.markdown(html_galeria, unsafe_allow_html=True)
                     if len(imagenes_del_producto) > 1: st.markdown("<p style='text-align: center; color: #aaa; font-size: 13px; margin-top: -5px; margin-bottom: 5px;'>👉 Desliza la foto</p>", unsafe_allow_html=True)
-                    if st.button("🔍 Ampliar foto", key=f"zoom_{prod['_id']}", use_container_width=True): abrir_zoom(prod['nombre'], imagenes_del_producto)
+                    if st.button("🔍 Ampliar foto", key=f"zoom_{str_id}", use_container_width=True): abrir_zoom(prod['nombre'], imagenes_del_producto)
                 
                 stock_normal = prod.get('stock', 0)
                 precio_normal = prod.get('precio', 0.0)
@@ -855,8 +849,8 @@ else:
                 elif tipo_real == "BakuCore": st.markdown(f"<div style='margin-top: 5px; margin-bottom: -10px;'><b>Símbolo:</b> {prod.get('simbolo', 'N/A')}</div>", unsafe_allow_html=True)
                 
                 if not es_modo_admin_catalogo:
-                    en_carrito_normal = sum(1 for item in st.session_state.carrito if item["_id"] == prod["_id"] and item.get("variante") == "normal")
-                    en_carrito_detalle = sum(1 for item in st.session_state.carrito if item["_id"] == prod["_id"] and item.get("variante") == "detalle")
+                    en_carrito_normal = sum(1 for item in st.session_state.carrito if str(item["_id"]) == str_id and item.get("variante") == "normal")
+                    en_carrito_detalle = sum(1 for item in st.session_state.carrito if str(item["_id"]) == str_id and item.get("variante") == "detalle")
                     
                     if stock_normal == 0 and stock_detalle == 0:
                         st.markdown("🚨 **AGOTADO**", unsafe_allow_html=True)
@@ -866,18 +860,17 @@ else:
                             st.write(f"🟢 **Perfecta:** ${precio_normal:,.2f}{cu_norm} (Disp: {stock_normal})")
                             
                             if (stock_normal - en_carrito_normal) > 0:
-                                if st.button("🛒 Añadir", key=f"add_n_{prod['_id']}", use_container_width=True):
-                                    st.session_state.carrito.append({"_id": prod["_id"], "nombre": f"{prod['nombre']}", "precio": precio_normal, "variante": "normal", "tipo": tipo_real})
+                                if st.button("🛒 Añadir", key=f"add_n_{str_id}", use_container_width=True):
+                                    st.session_state.carrito.append({"_id": str_id, "nombre": f"{prod['nombre']}", "precio": precio_normal, "variante": "normal", "tipo": tipo_real})
                                     guardar_carrito() 
                                     
-                                    # --- DETECCIÓN AUTOMÁTICA DEL 3x2 ---
                                     if config_promos.get("promo_3x2", False) and tipo_real not in ["Carta", "BakuCore", "Extra"]:
                                         eleg = [i for i in st.session_state.carrito if i.get("tipo") not in ["Carta", "BakuCore", "Extra"] and i.get("variante") != "detalle"]
                                         if len(eleg) % 3 == 2:
                                             st.session_state.abrir_modal_3x2 = True
                                             
                                     st.rerun()
-                            else: st.button("✅ En carrito (Máx)", disabled=True, key=f"max_n_{prod['_id']}", use_container_width=True)
+                            else: st.button("✅ En carrito (Máx)", disabled=True, key=f"max_n_{str_id}", use_container_width=True)
                             
                         if stock_detalle > 0:
                             st.markdown(f"<span style='color:#f39c12; font-size: 0.9em;'>⚠️ **Detalle:** {texto_detalle}</span>", unsafe_allow_html=True)
@@ -885,11 +878,11 @@ else:
                             st.write(f"🟠 **C/Detalle:** ${precio_detalle:,.2f}{cu_det} (Disp: {stock_detalle})")
                             
                             if (stock_detalle - en_carrito_detalle) > 0:
-                                if st.button("🛒 Añadir", key=f"add_d_{prod['_id']}", use_container_width=True):
-                                    st.session_state.carrito.append({"_id": prod["_id"], "nombre": f"{prod['nombre']} (Detalle)", "precio": precio_detalle, "variante": "detalle", "tipo": tipo_real})
+                                if st.button("🛒 Añadir", key=f"add_d_{str_id}", use_container_width=True):
+                                    st.session_state.carrito.append({"_id": str_id, "nombre": f"{prod['nombre']} (Detalle)", "precio": precio_detalle, "variante": "detalle", "tipo": tipo_real})
                                     guardar_carrito() 
                                     st.rerun()
-                            else: st.button("✅ Detalle en carrito", disabled=True, key=f"max_d_{prod['_id']}", use_container_width=True)
+                            else: st.button("✅ Detalle en carrito", disabled=True, key=f"max_d_{str_id}", use_container_width=True)
 
                 if es_modo_admin_catalogo:
                     st.markdown('<hr style="margin: 10px 0px; border: none; border-top: 1px solid rgba(255,255,255,0.2);">', unsafe_allow_html=True)
@@ -897,28 +890,25 @@ else:
                     with st.expander("✏️ Editar"):
                         tipo_actual = prod.get("tipo", "Bakugan")
                         idx_tipo = tipos_producto.index(tipo_actual) if tipo_actual in tipos_producto else 0
-                        nuevo_tipo = st.selectbox("Categoría / Tipo", tipos_producto, index=idx_tipo, key=f"etipo_{prod['_id']}")
+                        nuevo_tipo = st.selectbox("Categoría / Tipo", tipos_producto, index=idx_tipo, key=f"etipo_{str_id}")
 
-                        np = st.number_input("Precio N.", value=float(precio_normal), step=10.0, key=f"epn_{prod['_id']}")
-                        ns = st.number_input("Stock N.", value=int(stock_normal), step=1, key=f"esn_{prod['_id']}")
-                        ndp = st.number_input("Precio D.", value=float(precio_detalle), step=10.0, key=f"epd_{prod['_id']}")
-                        nds = st.number_input("Stock D.", value=int(stock_detalle), step=1, key=f"esd_{prod['_id']}")
-                        ndtxt = st.text_input("Detalle", value=texto_detalle, key=f"etxt_{prod['_id']}")
+                        np = st.number_input("Precio N.", value=float(precio_normal), step=10.0, key=f"epn_{str_id}")
+                        ns = st.number_input("Stock N.", value=int(stock_normal), step=1, key=f"esn_{str_id}")
+                        ndp = st.number_input("Precio D.", value=float(precio_detalle), step=10.0, key=f"epd_{str_id}")
+                        nds = st.number_input("Stock D.", value=int(stock_detalle), step=1, key=f"esd_{str_id}")
+                        ndtxt = st.text_input("Detalle", value=texto_detalle, key=f"etxt_{str_id}")
                         
-                        if st.button("💾 Guardar", key=f"save_{prod['_id']}", use_container_width=True):
-                            col_productos.update_one({"_id": ObjectId(prod["_id"])}, {"$set": {
+                        if st.button("💾 Guardar", key=f"save_{str_id}", use_container_width=True):
+                            col_productos.update_one({"_id": ObjectId(str_id)}, {"$set": {
                                 "tipo": nuevo_tipo,
                                 "precio": np, "stock": ns, "precio_detalle": ndp, "stock_detalle": nds, "detalle": ndtxt
                             }})
-                            refrescar_inventario() # <-- ACTUALIZA LA CACHÉ
                             st.rerun()
                             
-                    if st.button("🗑️ Eliminar", key=f"del_{prod['_id']}", use_container_width=True):
-                        col_productos.delete_one({"_id": ObjectId(prod["_id"])})
-                        refrescar_inventario() # <-- ACTUALIZA LA CACHÉ
+                    if st.button("🗑️ Eliminar", key=f"del_{str_id}", use_container_width=True):
+                        col_productos.delete_one({"_id": ObjectId(str_id)})
                         st.rerun()
                         
-        # Botón para cargar más piezas
         if len(productos_filtrados) > st.session_state.limite_items:
             st.markdown("---")
             if st.button("⬇️ Cargar más piezas", use_container_width=True, type="primary"):
