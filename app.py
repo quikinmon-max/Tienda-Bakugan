@@ -1,7 +1,6 @@
 import streamlit as st
 import pymongo
 import base64
-import random
 import uuid
 import urllib.parse
 from datetime import datetime, timedelta
@@ -19,10 +18,7 @@ st.set_page_config(page_title="Bakugan Market", page_icon="🔥", layout="wide")
 def hora_qro():
     return datetime.utcnow() - timedelta(hours=6)
 
-# ---------------- INICIALIZAR MEMORIA Y SEMILLA ALEATORIA ----------------
-if 'rand_seed' not in st.session_state:
-    st.session_state.rand_seed = random.randint(1, 999999)
-
+# ---------------- INICIALIZAR MEMORIA ----------------
 if 'limite_items' not in st.session_state:
     st.session_state.limite_items = 12
 
@@ -44,7 +40,6 @@ col_ventas = db["ventas"]
 col_carritos = db["carritos_temporales"] 
 
 # ---------------- MOTOR NUCLEAR EN RAM (CACHÉ) ----------------
-# 1. Caché de Configuraciones (Promos y Diseño)
 @st.cache_data(ttl=600, show_spinner=False)
 def obtener_configuraciones():
     promos = col_config.find_one({"_id": "promociones"})
@@ -62,23 +57,19 @@ def obtener_configuraciones():
     prefs = col_config.find_one({"_id": "sitio_prefs"})
     return promos, prefs
 
-# 2. Caché del Catálogo de Textos (Cero Lag)
+# Caché del Catálogo (Solo Texto, ultra ligero)
 @st.cache_data(ttl=300, show_spinner=False)
 def cargar_catalogo_textos():
     items = list(col_productos.find({}, {"imagenes_b64": 0, "imagenes_detalle_b64": 0, "imagen_b64": 0}))
     for i in items: i["_id"] = str(i["_id"])
     return items
 
-# 3. Caché de Fotos por Bloques
-@st.cache_data(ttl=300, show_spinner=False)
-def cargar_imagenes_batch(ids_tuple):
-    ids_obj = [ObjectId(i) for i in ids_tuple]
-    docs = list(col_productos.find({"_id": {"$in": ids_obj}}, {"imagenes_b64": 1, "imagenes_detalle_b64": 1, "imagen_b64": 1}))
-    res = {}
-    for d in docs: res[str(d["_id"])] = d
-    return res
+# Caché INDIVIDUAL de Fotos (Evita descargar las mismas fotos al darle a 'Cargar más')
+@st.cache_data(max_entries=2000, show_spinner=False)
+def obtener_foto_mongo(prod_id_str):
+    doc = col_productos.find_one({"_id": ObjectId(prod_id_str)}, {"imagenes_b64": 1, "imagenes_detalle_b64": 1, "imagen_b64": 1})
+    return doc if doc else {}
 
-# Función Gatillo: Se activa cuando tú editas, vendes o cambias algo para refrescar la RAM
 def forzar_actualizacion():
     st.cache_data.clear()
 
@@ -86,12 +77,11 @@ config_promos, config_data = obtener_configuraciones()
 fondo_b64 = config_data.get("fondo_b64") if config_data else None
 logo_b64 = config_data.get("logo_b64") if config_data else None
 
-# ---------------- SISTEMA ANTICAÍDAS ULTRA RÁPIDO ----------------
+# ---------------- SISTEMA ANTICAÍDAS ----------------
 if 'session_id' not in st.session_state:
     st.session_state.session_id = st.query_params.get("sesion", str(uuid.uuid4())[:8])
     st.query_params["sesion"] = st.session_state.session_id
 
-# Solo consultamos la BD UNA VEZ cuando el usuario entra por primera vez
 if 'carrito_inicializado' not in st.session_state:
     carrito_guardado = col_carritos.find_one({"_id": st.session_state.session_id})
     st.session_state.carrito = carrito_guardado.get("items", []) if carrito_guardado else []
@@ -125,7 +115,7 @@ def abrir_zoom(nombre_prod, imagenes_b64):
     if len(imagenes_b64) > 1:
         st.markdown("<p style='text-align: center; color: #aaa; font-size: 14px; margin-top: 10px;'>👉 Desliza para ver más</p>", unsafe_allow_html=True)
 
-# ---------------- MANTENIMIENTO AUTOMÁTICO (Solo 1 vez por hora) ----------------
+# ---------------- MANTENIMIENTO AUTOMÁTICO ----------------
 @st.cache_data(ttl=3600, show_spinner=False)
 def ejecutar_mantenimiento(trigger):
     ahora = hora_qro()
@@ -142,7 +132,7 @@ def ejecutar_mantenimiento(trigger):
 
 ejecutar_mantenimiento(datetime.utcnow().strftime("%Y-%m-%d %H"))
 
-# ---------------- EL CEREBRO DEL MENÚ 3X2 (Caché RAM) ----------------
+# ---------------- EL CEREBRO DEL MENÚ 3X2 ----------------
 @st.dialog("🎁 Menú de Regalos (Promo 3x2)")
 def modal_regalo_3x2(precio_max):
     st.markdown(f"¡Felicidades! Como llevas 2 piezas, tienes derecho a elegir una tercera (valor hasta **${precio_max:,.2f}**) completamente **GRATIS**.")
@@ -678,7 +668,7 @@ else:
             
     st.markdown("---")
 
-    # ---------------- BÚSQUEDA SÚPER RÁPIDA (TODO EN PYTHON, SIN TOCAR MONGO) ----------------
+    # ---------------- BÚSQUEDA SÚPER RÁPIDA EN RAM ----------------
     productos_filtrados = []
     busqueda_low = busqueda_texto.lower() if busqueda_texto else ""
 
@@ -727,23 +717,19 @@ else:
             else:
                 if stock_normal > 0: productos_filtrados.append(prod)
 
-    rng = random.Random(st.session_state.rand_seed)
-    rng.shuffle(productos_filtrados)
+    # 1. ORDEN FIJO POR MÁS RECIENTES (¡Adiós al Shuffle que volvía lenta la memoria!)
+    productos_filtrados.sort(key=lambda x: str(x["_id"]), reverse=True)
 
-    # ---------------- RENDERIZADO CON FOTOS PEREZOSAS (LAZY LOAD EN CACHÉ) ----------------
+    # ---------------- RENDERIZADO CON FOTOS PEREZOSAS ----------------
     productos_a_mostrar = productos_filtrados[:st.session_state.limite_items]
 
     if not productos_filtrados:
         st.info("No encontramos piezas en esta categoría.")
     else:
-        # SOLO pedimos a Mongo las fotos de estos 12 Bakugans, y se guardan en caché para la próxima
-        ids_mostrar = tuple([p["_id"] for p in productos_a_mostrar])
-        mapa_imgs_cacheadas = cargar_imagenes_batch(ids_mostrar)
-
         cols = st.columns(3)
         for index, prod in enumerate(productos_a_mostrar):
-            
-            info_img = mapa_imgs_cacheadas.get(str(prod["_id"]), {})
+            # 2. CACHÉ INDIVIDUAL: Solo pide la foto a la base de datos si no está en la memoria RAM
+            info_img = obtener_foto_mongo(str(prod["_id"]))
             
             with cols[index % 3]:
                 st.markdown(f"### {prod['nombre']}")
