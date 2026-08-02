@@ -1,6 +1,7 @@
 import streamlit as st
 import pymongo
 import base64
+import random
 import uuid
 import urllib.parse
 from datetime import datetime, timedelta
@@ -77,17 +78,33 @@ config_promos, config_data = obtener_configuraciones()
 fondo_b64 = config_data.get("fondo_b64") if config_data else None
 logo_b64 = config_data.get("logo_b64") if config_data else None
 
-# ---------------- SISTEMA ANTICAÍDAS ----------------
+# ---------------- SISTEMA ANTICAÍDAS ULTRA RÁPIDO ----------------
 if 'session_id' not in st.session_state:
     st.session_state.session_id = st.query_params.get("sesion", str(uuid.uuid4())[:8])
     st.query_params["sesion"] = st.session_state.session_id
 
+if 'ultima_actividad_carrito' not in st.session_state:
+    st.session_state.ultima_actividad_carrito = hora_qro()
+
 if 'carrito_inicializado' not in st.session_state:
     carrito_guardado = col_carritos.find_one({"_id": st.session_state.session_id})
-    st.session_state.carrito = carrito_guardado.get("items", []) if carrito_guardado else []
+    # Valida si el carrito guardado no tiene más de 30 mins de inactividad
+    if carrito_guardado and (hora_qro() - carrito_guardado.get("fecha", hora_qro()) < timedelta(minutes=30)):
+        st.session_state.carrito = carrito_guardado.get("items", [])
+        st.session_state.ultima_actividad_carrito = carrito_guardado.get("fecha", hora_qro())
+    else:
+        st.session_state.carrito = []
     st.session_state.carrito_inicializado = True
 
+# --- EXTERMINADOR DE CARRITOS FANTASMA ---
+if st.session_state.carrito and (hora_qro() - st.session_state.ultima_actividad_carrito > timedelta(minutes=30)):
+    st.session_state.carrito = []
+    st.session_state.ultima_actividad_carrito = hora_qro()
+    col_carritos.delete_one({"_id": st.session_state.session_id})
+    st.warning("⏳ Tu carrito expiró por 30 minutos de inactividad. Las piezas fueron liberadas para otros clientes.")
+
 def guardar_carrito():
+    st.session_state.ultima_actividad_carrito = hora_qro()
     col_carritos.update_one(
         {"_id": st.session_state.session_id},
         {"$set": {"items": st.session_state.carrito, "fecha": hora_qro()}},
@@ -126,7 +143,9 @@ def ejecutar_mantenimiento(trigger):
             col_productos.update_one({"_id": doc["producto_id"]}, {"$inc": {campo: 1}})
             col_apartados.delete_one({"_id": doc["_id"]})
         forzar_actualizacion()
-    limite_cart = hora_qro() - timedelta(days=1)
+    
+    # Limpiamos los carritos abandonados de la base de datos (más de 30 mins)
+    limite_cart = hora_qro() - timedelta(minutes=30)
     col_carritos.delete_many({"fecha": {"$lt": limite_cart}})
     return True
 
@@ -624,27 +643,42 @@ else:
                     
                     if st.button("Confirmar Apartado", use_container_width=True, type="primary"):
                         if nom and tel:
+                            # --- 1. VERIFICADOR ANTI-GANDALLAS ---
+                            error_stock = False
+                            nombres_agotados = []
                             for ip in items_procesados:
                                 item_bd = ip["item"]
-                                item_bd_id = ObjectId(item_bd["_id"])
-                                db_prod = col_productos.find_one({"_id": item_bd_id})
-                                campo_stock = "stock_detalle" if item_bd.get("variante") == "detalle" and "stock_detalle" in db_prod else "stock"
-                                col_apartados.insert_one({
-                                    "producto_id": item_bd_id, "nombre_producto": item_bd["nombre"],
-                                    "precio": ip["precio_final"], "comprador_nombre": nom, "comprador_telefono": tel,
-                                    "fecha_apartado": hora_qro(), "fecha_vencimiento": hora_qro() + timedelta(days=3), "campo_stock": campo_stock, "anticipo": 0.0
-                                })
-                                col_productos.update_one({"_id": item_bd_id}, {"$inc": {campo_stock: -1}})
+                                db_prod = col_productos.find_one({"_id": ObjectId(item_bd["_id"])})
+                                campo_stock = "stock_detalle" if item_bd.get("variante") == "detalle" else "stock"
+                                if not db_prod or db_prod.get(campo_stock, 0) <= 0:
+                                    error_stock = True
+                                    nombres_agotados.append(item_bd["nombre"])
                             
-                            texto_crudo = f"Hola, soy {nom}. Acabo de apartar {cantidad_carrito} piezas por un total de ${total_carrito:,.2f}.\n\nMis piezas son:\n"
-                            for ip in items_procesados: texto_crudo += f"👉 {ip['item']['nombre']} (${ip['precio_final']:,.2f}){ip['msg_wa']}\n"
-                            if mejor_promo_monto: texto_crudo += f"\n*Nota: Estoy consciente de que el descuento del {mejor_promo_monto['porcentaje']}% aplicado no cubre gastos de envío.*"
-                            
-                            st.session_state.wa_link = f"https://wa.me/4462879839?text={urllib.parse.quote(texto_crudo)}"
-                            st.session_state.carrito = [] 
-                            guardar_carrito()
-                            forzar_actualizacion()
-                            st.rerun()
+                            if error_stock:
+                                st.error(f"⚠️ ¡Uy! Alguien te ganó estas piezas mientras las tenías en el carrito: {', '.join(nombres_agotados)}. Quítalas pulsando la '❌' para confirmar el resto.")
+                            else:
+                                # --- 2. TODO BIEN, APARTAR PIEZAS ---
+                                for ip in items_procesados:
+                                    item_bd = ip["item"]
+                                    item_bd_id = ObjectId(item_bd["_id"])
+                                    db_prod = col_productos.find_one({"_id": item_bd_id})
+                                    campo_stock = "stock_detalle" if item_bd.get("variante") == "detalle" and "stock_detalle" in db_prod else "stock"
+                                    col_apartados.insert_one({
+                                        "producto_id": item_bd_id, "nombre_producto": item_bd["nombre"],
+                                        "precio": ip["precio_final"], "comprador_nombre": nom, "comprador_telefono": tel,
+                                        "fecha_apartado": hora_qro(), "fecha_vencimiento": hora_qro() + timedelta(days=3), "campo_stock": campo_stock, "anticipo": 0.0
+                                    })
+                                    col_productos.update_one({"_id": item_bd_id}, {"$inc": {campo_stock: -1}})
+                                
+                                texto_crudo = f"Hola, soy {nom}. Acabo de apartar {cantidad_carrito} piezas por un total de ${total_carrito:,.2f}.\n\nMis piezas son:\n"
+                                for ip in items_procesados: texto_crudo += f"👉 {ip['item']['nombre']} (${ip['precio_final']:,.2f}){ip['msg_wa']}\n"
+                                if mejor_promo_monto: texto_crudo += f"\n*Nota: Estoy consciente de que el descuento del {mejor_promo_monto['porcentaje']}% aplicado no cubre gastos de envío.*"
+                                
+                                st.session_state.wa_link = f"https://wa.me/4462879839?text={urllib.parse.quote(texto_crudo)}"
+                                st.session_state.carrito = [] 
+                                guardar_carrito()
+                                forzar_actualizacion()
+                                st.rerun()
                         else: st.warning("⚠️ Faltan datos.")
                 else: st.info("Carrito vacío.")
 
@@ -717,7 +751,7 @@ else:
             else:
                 if stock_normal > 0: productos_filtrados.append(prod)
 
-    # 1. ORDEN FIJO POR MÁS RECIENTES (¡Adiós al Shuffle que volvía lenta la memoria!)
+    # ORDEN FIJO POR MÁS RECIENTES (Garantiza cero lag)
     productos_filtrados.sort(key=lambda x: str(x["_id"]), reverse=True)
 
     # ---------------- RENDERIZADO CON FOTOS PEREZOSAS ----------------
@@ -728,7 +762,6 @@ else:
     else:
         cols = st.columns(3)
         for index, prod in enumerate(productos_a_mostrar):
-            # 2. CACHÉ INDIVIDUAL: Solo pide la foto a la base de datos si no está en la memoria RAM
             info_img = obtener_foto_mongo(str(prod["_id"]))
             
             with cols[index % 3]:
