@@ -88,7 +88,6 @@ if 'ultima_actividad_carrito' not in st.session_state:
 
 if 'carrito_inicializado' not in st.session_state:
     carrito_guardado = col_carritos.find_one({"_id": st.session_state.session_id})
-    # Valida si el carrito guardado no tiene más de 30 mins de inactividad
     if carrito_guardado and (hora_qro() - carrito_guardado.get("fecha", hora_qro()) < timedelta(minutes=30)):
         st.session_state.carrito = carrito_guardado.get("items", [])
         st.session_state.ultima_actividad_carrito = carrito_guardado.get("fecha", hora_qro())
@@ -144,7 +143,6 @@ def ejecutar_mantenimiento(trigger):
             col_apartados.delete_one({"_id": doc["_id"]})
         forzar_actualizacion()
     
-    # Limpiamos los carritos abandonados de la base de datos (más de 30 mins)
     limite_cart = hora_qro() - timedelta(minutes=30)
     col_carritos.delete_many({"fecha": {"$lt": limite_cart}})
     return True
@@ -395,8 +393,12 @@ elif vista_admin == "➕ Agregar Producto":
     tipo_prod = st.selectbox("Tipo de Producto", tipos_producto)
     nombre = st.text_input("Nombre / Descripción principal")
     
+    # --- LA CORRECCIÓN MAESTRA AQUÍ ---
+    # Usamos la lista exacta de la base de datos sin emojis para que el filtro no falle
+    tipos_con_atributo = ["Bakugan", "Trampa", "Vehículo", "Armamento", "BakuTech", "Set de Batalla", "Deka"]
+    
     col1, col2, col3 = st.columns(3)
-    with col1: atributo_form = st.selectbox("Atributo", categorias[1:], disabled=(tipo_prod not in tipos_con_atributo_ui)) 
+    with col1: atributo_form = st.selectbox("Atributo", categorias[1:], disabled=(tipo_prod not in tipos_con_atributo)) 
     with col2: material_form = st.selectbox("Material", materiales[1:], disabled=(tipo_prod != "Carta"))
     with col3: simbolo_form = st.selectbox("Símbolo", simbolos_core[1:], disabled=(tipo_prod != "BakuCore"))
     
@@ -430,7 +432,7 @@ elif vista_admin == "➕ Agregar Producto":
                 "precio_detalle": precio_detalle, "stock_detalle": stock_detalle, "detalle": detalle_prod,
                 "imagenes_b64": lista_imagenes_b64, "imagenes_detalle_b64": lista_imagenes_detalle_b64
             }
-            if tipo_prod in tipos_con_atributo_ui: nuevo_prod["atributo"] = atributo_form
+            if tipo_prod in tipos_con_atributo: nuevo_prod["atributo"] = atributo_form
             elif tipo_prod == "Carta": nuevo_prod["material"] = material_form
             elif tipo_prod == "BakuCore": nuevo_prod["simbolo"] = simbolo_form
                 
@@ -643,7 +645,6 @@ else:
                     
                     if st.button("Confirmar Apartado", use_container_width=True, type="primary"):
                         if nom and tel:
-                            # --- 1. VERIFICADOR ANTI-GANDALLAS ---
                             error_stock = False
                             nombres_agotados = []
                             for ip in items_procesados:
@@ -657,7 +658,6 @@ else:
                             if error_stock:
                                 st.error(f"⚠️ ¡Uy! Alguien te ganó estas piezas mientras las tenías en el carrito: {', '.join(nombres_agotados)}. Quítalas pulsando la '❌' para confirmar el resto.")
                             else:
-                                # --- 2. TODO BIEN, APARTAR PIEZAS ---
                                 for ip in items_procesados:
                                     item_bd = ip["item"]
                                     item_bd_id = ObjectId(item_bd["_id"])
@@ -751,7 +751,6 @@ else:
             else:
                 if stock_normal > 0: productos_filtrados.append(prod)
 
-    # ORDEN FIJO POR MÁS RECIENTES (Garantiza cero lag)
     productos_filtrados.sort(key=lambda x: str(x["_id"]), reverse=True)
 
     # ---------------- RENDERIZADO CON FOTOS PEREZOSAS ----------------
