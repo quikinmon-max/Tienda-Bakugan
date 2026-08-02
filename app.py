@@ -1,13 +1,13 @@
 import streamlit as st
 import pymongo
 import base64
-import random
 import uuid
 import urllib.parse
 from datetime import datetime, timedelta
 from PIL import Image, ImageOps, ImageFile
 import io
 from bson.objectid import ObjectId
+from collections import defaultdict  # <-- NUEVO: Para el algoritmo de mezcla inteligente
 
 # --- BLINDAJE PARA FOTOS PESADAS ---
 ImageFile.LOAD_TRUNCATED_IMAGES = True
@@ -58,14 +58,12 @@ def obtener_configuraciones():
     prefs = col_config.find_one({"_id": "sitio_prefs"})
     return promos, prefs
 
-# Caché del Catálogo (Solo Texto, ultra ligero)
 @st.cache_data(ttl=300, show_spinner=False)
 def cargar_catalogo_textos():
     items = list(col_productos.find({}, {"imagenes_b64": 0, "imagenes_detalle_b64": 0, "imagen_b64": 0}))
     for i in items: i["_id"] = str(i["_id"])
     return items
 
-# Caché INDIVIDUAL de Fotos (Evita descargar las mismas fotos al darle a 'Cargar más')
 @st.cache_data(max_entries=2000, show_spinner=False)
 def obtener_foto_mongo(prod_id_str):
     doc = col_productos.find_one({"_id": ObjectId(prod_id_str)}, {"imagenes_b64": 1, "imagenes_detalle_b64": 1, "imagen_b64": 1})
@@ -78,7 +76,7 @@ config_promos, config_data = obtener_configuraciones()
 fondo_b64 = config_data.get("fondo_b64") if config_data else None
 logo_b64 = config_data.get("logo_b64") if config_data else None
 
-# ---------------- SISTEMA ANTICAÍDAS ULTRA RÁPIDO ----------------
+# ---------------- SISTEMA ANTICAÍDAS ----------------
 if 'session_id' not in st.session_state:
     st.session_state.session_id = st.query_params.get("sesion", str(uuid.uuid4())[:8])
     st.query_params["sesion"] = st.session_state.session_id
@@ -95,7 +93,6 @@ if 'carrito_inicializado' not in st.session_state:
         st.session_state.carrito = []
     st.session_state.carrito_inicializado = True
 
-# --- EXTERMINADOR DE CARRITOS FANTASMA ---
 if st.session_state.carrito and (hora_qro() - st.session_state.ultima_actividad_carrito > timedelta(minutes=30)):
     st.session_state.carrito = []
     st.session_state.ultima_actividad_carrito = hora_qro()
@@ -393,8 +390,6 @@ elif vista_admin == "➕ Agregar Producto":
     tipo_prod = st.selectbox("Tipo de Producto", tipos_producto)
     nombre = st.text_input("Nombre / Descripción principal")
     
-    # --- LA CORRECCIÓN MAESTRA AQUÍ ---
-    # Usamos la lista exacta de la base de datos sin emojis para que el filtro no falle
     tipos_con_atributo = ["Bakugan", "Trampa", "Vehículo", "Armamento", "BakuTech", "Set de Batalla", "Deka"]
     
     col1, col2, col3 = st.columns(3)
@@ -751,7 +746,25 @@ else:
             else:
                 if stock_normal > 0: productos_filtrados.append(prod)
 
+    # 1. ORDENAMOS POR MÁS RECIENTES (Garantiza que lo nuevo salga hasta arriba)
     productos_filtrados.sort(key=lambda x: str(x["_id"]), reverse=True)
+
+    # 2. MEZCLA INTELIGENTE "ROUND-ROBIN" (Repartidor de cartas)
+    agrupados = defaultdict(list)
+    for p in productos_filtrados:
+        # Agrupamos por el atributo principal para no ver muchos iguales seguidos
+        clave_mezcla = p.get("atributo", p.get("tipo", "Otro"))
+        agrupados[clave_mezcla].append(p)
+
+    mezclados = []
+    # Repartimos uno de cada montón hasta que se acaben (¡Mezcla perfecta y estable!)
+    while agrupados:
+        for clave in list(agrupados.keys()):
+            mezclados.append(agrupados[clave].pop(0))
+            if not agrupados[clave]:
+                del agrupados[clave]
+                
+    productos_filtrados = mezclados
 
     # ---------------- RENDERIZADO CON FOTOS PEREZOSAS ----------------
     productos_a_mostrar = productos_filtrados[:st.session_state.limite_items]
