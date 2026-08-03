@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 from PIL import Image, ImageOps, ImageFile
 import io
 from bson.objectid import ObjectId
-from collections import defaultdict  # <-- NUEVO: Para el algoritmo de mezcla inteligente
+from collections import defaultdict 
 
 # --- BLINDAJE PARA FOTOS PESADAS ---
 ImageFile.LOAD_TRUNCATED_IMAGES = True
@@ -117,6 +117,22 @@ def comprimir_imagen(img_file):
     img.save(buffer, format="JPEG", quality=70)
     return base64.b64encode(buffer.getvalue()).decode("utf-8")
 
+# ---------------- MODALES Y DIÁLOGOS ----------------
+@st.dialog("📖 ¿Cómo comprar en Baku-Market?")
+def abrir_tutorial():
+    st.markdown("""
+    ¡Es súper fácil apartar tus piezas! Sigue estos pasos:
+    
+    1. **Filtra o Busca:** Usa el menú lateral para encontrar atributos o piezas específicas.
+    2. **Añade al Carrito:** Da clic en "🛒 Añadir". Revisa si la pieza es *Perfecta* 🟢 o si tiene *Detalle* 🟠.
+    3. **Checa las Promos:** ¡El sistema te aplicará descuentos o regalos en automático si cumples las condiciones del banner!
+    4. **Confirma tu Compra:** Abre tu Carrito (arriba a la derecha), llena tus datos y dale en "Confirmar". Esto nos mandará un WhatsApp para apartar tu pedido al instante.
+    
+    🚨 **Nota:** Tienes 30 minutos para confirmar tu carrito antes de que las piezas se liberen nuevamente para otras personas.
+    """)
+    if st.button("¡Entendido, a comprar! 🔥", use_container_width=True):
+        st.rerun()
+
 @st.dialog("🔍 Modo Detalle")
 def abrir_zoom(nombre_prod, imagenes_b64):
     st.markdown(f"### {nombre_prod}")
@@ -128,25 +144,6 @@ def abrir_zoom(nombre_prod, imagenes_b64):
     if len(imagenes_b64) > 1:
         st.markdown("<p style='text-align: center; color: #aaa; font-size: 14px; margin-top: 10px;'>👉 Desliza para ver más</p>", unsafe_allow_html=True)
 
-# ---------------- MANTENIMIENTO AUTOMÁTICO ----------------
-@st.cache_data(ttl=3600, show_spinner=False)
-def ejecutar_mantenimiento(trigger):
-    ahora = hora_qro()
-    vencidos = list(col_apartados.find({"fecha_vencimiento": {"$lt": ahora}}))
-    if vencidos:
-        for doc in vencidos:
-            campo = doc.get("campo_stock", "stock")
-            col_productos.update_one({"_id": doc["producto_id"]}, {"$inc": {campo: 1}})
-            col_apartados.delete_one({"_id": doc["_id"]})
-        forzar_actualizacion()
-    
-    limite_cart = hora_qro() - timedelta(minutes=30)
-    col_carritos.delete_many({"fecha": {"$lt": limite_cart}})
-    return True
-
-ejecutar_mantenimiento(datetime.utcnow().strftime("%Y-%m-%d %H"))
-
-# ---------------- EL CEREBRO DEL MENÚ 3X2 ----------------
 @st.dialog("🎁 Menú de Regalos (Promo 3x2)")
 def modal_regalo_3x2(precio_max):
     st.markdown(f"¡Felicidades! Como llevas 2 piezas, tienes derecho a elegir una tercera (valor hasta **${precio_max:,.2f}**) completamente **GRATIS**.")
@@ -175,6 +172,24 @@ def modal_regalo_3x2(precio_max):
     if st.button("Elegir más tarde / Cerrar Menú", use_container_width=True):
         if "abrir_modal_3x2" in st.session_state: st.session_state.abrir_modal_3x2 = False
         st.rerun()
+
+# ---------------- MANTENIMIENTO AUTOMÁTICO ----------------
+@st.cache_data(ttl=3600, show_spinner=False)
+def ejecutar_mantenimiento(trigger):
+    ahora = hora_qro()
+    vencidos = list(col_apartados.find({"fecha_vencimiento": {"$lt": ahora}}))
+    if vencidos:
+        for doc in vencidos:
+            campo = doc.get("campo_stock", "stock")
+            col_productos.update_one({"_id": doc["producto_id"]}, {"$inc": {campo: 1}})
+            col_apartados.delete_one({"_id": doc["_id"]})
+        forzar_actualizacion()
+    
+    limite_cart = hora_qro() - timedelta(minutes=30)
+    col_carritos.delete_many({"fecha": {"$lt": limite_cart}})
+    return True
+
+ejecutar_mantenimiento(datetime.utcnow().strftime("%Y-%m-%d %H"))
 
 # --- CSS EXTERMINADOR DEFINITIVO + AJUSTES COMPACTOS ---
 css_global = f"""
@@ -237,6 +252,12 @@ if logo_b64:
     st.sidebar.markdown(f'<style>.logo-celular {{ width: 100%; border-radius: 8px; margin-bottom: 10px; }} @media (max-width: 768px) {{ .logo-celular {{ width: 45%; margin-left: auto; margin-right: auto; display: block; }} }} </style> <img src="data:image/png;base64,{logo_b64}" class="logo-celular">', unsafe_allow_html=True)
 else:
     st.sidebar.markdown("### 🛒 Mi Tienda")
+
+# --- BOTÓN DE TUTORIAL PARA DESPISTADOS ---
+st.sidebar.markdown("---")
+if st.sidebar.button("❓ ¿Cómo apartar/comprar?", use_container_width=True):
+    abrir_tutorial()
+st.sidebar.markdown("---")
 
 st.sidebar.header("Filtros Avanzados")
 
@@ -746,18 +767,16 @@ else:
             else:
                 if stock_normal > 0: productos_filtrados.append(prod)
 
-    # 1. ORDENAMOS POR MÁS RECIENTES (Garantiza que lo nuevo salga hasta arriba)
+    # 1. ORDENAMOS POR MÁS RECIENTES
     productos_filtrados.sort(key=lambda x: str(x["_id"]), reverse=True)
 
     # 2. MEZCLA INTELIGENTE "ROUND-ROBIN" (Repartidor de cartas)
     agrupados = defaultdict(list)
     for p in productos_filtrados:
-        # Agrupamos por el atributo principal para no ver muchos iguales seguidos
         clave_mezcla = p.get("atributo", p.get("tipo", "Otro"))
         agrupados[clave_mezcla].append(p)
 
     mezclados = []
-    # Repartimos uno de cada montón hasta que se acaben (¡Mezcla perfecta y estable!)
     while agrupados:
         for clave in list(agrupados.keys()):
             mezclados.append(agrupados[clave].pop(0))
