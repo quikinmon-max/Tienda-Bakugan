@@ -26,6 +26,10 @@ if 'limite_items' not in st.session_state:
 if 'admin_autenticado' not in st.session_state:
     st.session_state.admin_autenticado = False
 
+# --- MEMORIA PARA EL POP-UP DE BIENVENIDA ---
+if 'welcome_shown' not in st.session_state:
+    st.session_state.welcome_shown = False
+
 # ---------------- CONEXIÓN A MONGODB ----------------
 @st.cache_resource
 def init_connection():
@@ -118,19 +122,24 @@ def comprimir_imagen(img_file):
     return base64.b64encode(buffer.getvalue()).decode("utf-8")
 
 # ---------------- MODALES Y DIÁLOGOS ----------------
-@st.dialog("📖 ¿Cómo comprar en Baku-Market?")
+@st.dialog("📖 ¡Bienvenido a Baku-Market! ¿Cómo comprar?")
 def abrir_tutorial():
     st.markdown("""
     ¡Es súper fácil apartar tus piezas! Sigue estos pasos:
     
     1. **Filtra o Busca:** Usa el menú lateral para encontrar atributos o piezas específicas.
     2. **Añade al Carrito:** Da clic en "🛒 Añadir". Revisa si la pieza es *Perfecta* 🟢 o si tiene *Detalle* 🟠.
+    **🚨 REGLA DE ORO:** ¡Pícale **SOLO UNA VEZ** al botón de añadir por cada pieza que quieras! (Si metes algo por error, puedes borrarlo en tu Carrito).
     3. **Checa las Promos:** ¡El sistema te aplicará descuentos o regalos en automático si cumples las condiciones del banner!
     4. **Confirma tu Compra:** Abre tu Carrito (arriba a la derecha), llena tus datos y dale en "Confirmar". Esto nos mandará un WhatsApp para apartar tu pedido al instante.
     
-    🚨 **Nota:** Tienes 30 minutos para confirmar tu carrito antes de que las piezas se liberen nuevamente para otras personas.
+    ⚠️ **Nota Importante:** Tienes 30 minutos para confirmar tu carrito antes de que las piezas se liberen nuevamente para otras personas.
+    
+    ---
+    💡 **¿Necesitas volver a leer esto?** 
+    Puedes abrir esta guía en cualquier momento desde el **Menú de la izquierda** (en celular, despliégalo tocando la flechita **>** arriba a la izquierda) y dando clic en el botón **"❓ ¿Cómo apartar/comprar?"**.
     """)
-    if st.button("¡Entendido, a comprar! 🔥", use_container_width=True):
+    if st.button("¡Entendido, a explorar! 🔥", use_container_width=True):
         st.rerun()
 
 @st.dialog("🔍 Modo Detalle")
@@ -565,6 +574,11 @@ else:
         st.markdown("---")
         busqueda_texto = st.text_input("🔍 Buscar pieza por nombre...")
     else:
+        # --- GATILLO DEL POP-UP DE BIENVENIDA (Solo se ejecuta 1 vez) ---
+        if not st.session_state.welcome_shown:
+            st.session_state.welcome_shown = True
+            abrir_tutorial()
+
         col_tit, col_busc, col_cart = st.columns([1.5, 2, 1.5])
         with col_tit: st.markdown("### 🔥 Baku-Market") 
         with col_busc: busqueda_texto = st.text_input("Buscar", placeholder="🔍 Buscar...", label_visibility="collapsed")
@@ -767,10 +781,8 @@ else:
             else:
                 if stock_normal > 0: productos_filtrados.append(prod)
 
-    # 1. ORDENAMOS POR MÁS RECIENTES
     productos_filtrados.sort(key=lambda x: str(x["_id"]), reverse=True)
 
-    # 2. MEZCLA INTELIGENTE "ROUND-ROBIN" (Repartidor de cartas)
     agrupados = defaultdict(list)
     for p in productos_filtrados:
         clave_mezcla = p.get("atributo", p.get("tipo", "Otro"))
@@ -851,7 +863,8 @@ else:
                                         if len(eleg) % 3 == 2: st.session_state.abrir_modal_3x2 = True
                                             
                                     st.rerun()
-                            else: st.button("✅ En carrito (Máx)", disabled=True, key=f"max_n_{prod['_id']}", use_container_width=True)
+                            else: 
+                                st.button("✅ En carrito (Máx)", disabled=True, key=f"max_n_{prod['_id']}", use_container_width=True)
                             
                         if stock_detalle > 0:
                             st.markdown(f"<span style='color:#f39c12; font-size: 0.9em;'>⚠️ **Detalle:** {texto_detalle}</span>", unsafe_allow_html=True)
@@ -863,7 +876,8 @@ else:
                                     st.session_state.carrito.append({"_id": prod["_id"], "nombre": f"{prod['nombre']} (Detalle)", "precio": precio_detalle, "variante": "detalle", "tipo": tipo_real})
                                     guardar_carrito() 
                                     st.rerun()
-                            else: st.button("✅ Detalle en carrito", disabled=True, key=f"max_d_{prod['_id']}", use_container_width=True)
+                            else: 
+                                st.button("✅ Detalle en carrito (Máx)", disabled=True, key=f"max_d_{prod['_id']}", use_container_width=True)
 
                 if es_modo_admin_catalogo:
                     st.markdown('<hr style="margin: 10px 0px; border: none; border-top: 1px solid rgba(255,255,255,0.2);">', unsafe_allow_html=True)
