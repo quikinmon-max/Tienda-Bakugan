@@ -883,6 +883,8 @@ else:
                     st.markdown('<hr style="margin: 10px 0px; border: none; border-top: 1px solid rgba(255,255,255,0.2);">', unsafe_allow_html=True)
                     
                     with st.expander("✏️ Editar"):
+                        nuevo_nombre = st.text_input("Nombre del Producto", value=prod['nombre'], key=f"enom_{prod['_id']}")
+                        
                         idx_tipo = tipos_producto.index(tipo_real) if tipo_real in tipos_producto else 0
                         nuevo_tipo = st.selectbox("Categoría / Tipo", tipos_producto, index=idx_tipo, key=f"etipo_{prod['_id']}")
 
@@ -894,7 +896,7 @@ else:
                         
                         if st.button("💾 Guardar", key=f"save_{prod['_id']}", use_container_width=True):
                             col_productos.update_one({"_id": ObjectId(prod["_id"])}, {"$set": {
-                                "tipo": nuevo_tipo, "precio": np, "stock": ns, "precio_detalle": ndp, "stock_detalle": nds, "detalle": ndtxt
+                                "nombre": nuevo_nombre, "tipo": nuevo_tipo, "precio": np, "stock": ns, "precio_detalle": ndp, "stock_detalle": nds, "detalle": ndtxt
                             }})
                             forzar_actualizacion()
                             st.rerun()
