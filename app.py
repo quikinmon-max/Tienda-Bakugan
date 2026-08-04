@@ -26,9 +26,12 @@ if 'limite_items' not in st.session_state:
 if 'admin_autenticado' not in st.session_state:
     st.session_state.admin_autenticado = False
 
-# --- MEMORIA PARA EL POP-UP DE BIENVENIDA ---
 if 'welcome_shown' not in st.session_state:
     st.session_state.welcome_shown = False
+
+# --- CANDADO ANTI-SPAM PARA EL CHECKOUT ---
+if 'bloqueo_checkout' not in st.session_state:
+    st.session_state.bloqueo_checkout = False
 
 # ---------------- CONEXIÓN A MONGODB ----------------
 @st.cache_resource
@@ -573,7 +576,6 @@ else:
         st.markdown("---")
         busqueda_texto = st.text_input("🔍 Buscar pieza por nombre...")
     else:
-        # --- GATILLO DEL POP-UP DE BIENVENIDA (Solo se ejecuta 1 vez) ---
         if not st.session_state.welcome_shown:
             st.session_state.welcome_shown = True
             abrir_tutorial()
@@ -672,8 +674,18 @@ else:
                     nom = st.text_input("Tu Nombre", key="checkout_nom")
                     tel = st.text_input("Tu WhatsApp", key="checkout_tel")
                     
+                    # --- LA MAGIA ESTÁ AQUÍ: BLOQUEO DE DOBLE CLIC ---
                     if st.button("Confirmar Apartado", use_container_width=True, type="primary"):
-                        if nom and tel:
+                        if st.session_state.bloqueo_checkout:
+                            pass # Si ya hizo clic, ignoramos el segundo clic fantasma
+                        elif nom and tel:
+                            st.session_state.bloqueo_checkout = True # Cierra el candado
+                            
+                            # Segunda revisión de seguridad (por si el carrito ya se vació)
+                            if len(st.session_state.carrito) == 0:
+                                st.session_state.bloqueo_checkout = False
+                                st.rerun()
+                                
                             error_stock = False
                             nombres_agotados = []
                             for ip in items_procesados:
@@ -686,6 +698,7 @@ else:
                             
                             if error_stock:
                                 st.error(f"⚠️ ¡Uy! Alguien te ganó estas piezas mientras las tenías en el carrito: {', '.join(nombres_agotados)}. Quítalas pulsando la '❌' para confirmar el resto.")
+                                st.session_state.bloqueo_checkout = False # Abre el candado si hay error
                             else:
                                 for ip in items_procesados:
                                     item_bd = ip["item"]
@@ -705,6 +718,7 @@ else:
                                 
                                 st.session_state.wa_link = f"https://wa.me/4462879839?text={urllib.parse.quote(texto_crudo)}"
                                 st.session_state.carrito = [] 
+                                st.session_state.bloqueo_checkout = False # Abre el candado al terminar
                                 guardar_carrito()
                                 forzar_actualizacion()
                                 st.rerun()
