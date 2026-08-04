@@ -129,7 +129,7 @@ def abrir_tutorial():
     
     1. **Filtra o Busca:** Usa el menú lateral para encontrar atributos o piezas específicas.
     2. **Añade al Carrito:** Da clic en "🛒 Añadir". Revisa si la pieza es *Perfecta* 🟢 o si tiene *Detalle* 🟠.
-    **🚨 REGLA DE ORO:** ¡Pícale **SOLO UNA VEZ** al botón de añadir por cada pieza que quieras! (Si metes algo por error, puedes borrarlo en tu Carrito).
+    **🚨 REGLA DE ORO:** ¡Pícale **SOLO UNA VEZ** al botón de añadir por cada pieza que quieras! El sistema te lo bloqueará por seguridad. (Si metes algo por error, puedes borrarlo en tu Carrito).
     3. **Checa las Promos:** ¡El sistema te aplicará descuentos o regalos en automático si cumples las condiciones del banner!
     4. **Confirma tu Compra:** Abre tu Carrito (arriba a la derecha), llena tus datos y dale en "Confirmar". Esto nos mandará un WhatsApp para apartar tu pedido al instante.
     
@@ -853,7 +853,8 @@ else:
                             cu_norm = " c/u" if stock_normal > 1 else ""
                             st.write(f"🟢 **Perfecta:** ${precio_normal:,.2f}{cu_norm} (Disp: {stock_normal})")
                             
-                            if (stock_normal - en_carrito_normal) > 0:
+                            # --- LA REGLA DE FUEGO DE 1 PIEZA: Solo puedes añadirla si tienes 0 en el carrito ---
+                            if en_carrito_normal == 0:
                                 if st.button("🛒 Añadir", key=f"add_n_{prod['_id']}", use_container_width=True):
                                     st.session_state.carrito.append({"_id": prod["_id"], "nombre": f"{prod['nombre']}", "precio": precio_normal, "variante": "normal", "tipo": tipo_real})
                                     guardar_carrito() 
@@ -864,20 +865,21 @@ else:
                                             
                                     st.rerun()
                             else: 
-                                st.button("✅ En carrito (Máx)", disabled=True, key=f"max_n_{prod['_id']}", use_container_width=True)
+                                st.button("✅ En carrito", disabled=True, key=f"max_n_{prod['_id']}", use_container_width=True)
                             
                         if stock_detalle > 0:
                             st.markdown(f"<span style='color:#f39c12; font-size: 0.9em;'>⚠️ **Detalle:** {texto_detalle}</span>", unsafe_allow_html=True)
                             cu_det = " c/u" if stock_detalle > 1 else ""
                             st.write(f"🟠 **C/Detalle:** ${precio_detalle:,.2f}{cu_det} (Disp: {stock_detalle})")
                             
-                            if (stock_detalle - en_carrito_detalle) > 0:
+                            # --- LA REGLA DE FUEGO DE 1 PIEZA (Para Detalles) ---
+                            if en_carrito_detalle == 0:
                                 if st.button("🛒 Añadir", key=f"add_d_{prod['_id']}", use_container_width=True):
                                     st.session_state.carrito.append({"_id": prod["_id"], "nombre": f"{prod['nombre']} (Detalle)", "precio": precio_detalle, "variante": "detalle", "tipo": tipo_real})
                                     guardar_carrito() 
                                     st.rerun()
                             else: 
-                                st.button("✅ Detalle en carrito (Máx)", disabled=True, key=f"max_d_{prod['_id']}", use_container_width=True)
+                                st.button("✅ En carrito", disabled=True, key=f"max_d_{prod['_id']}", use_container_width=True)
 
                 if es_modo_admin_catalogo:
                     st.markdown('<hr style="margin: 10px 0px; border: none; border-top: 1px solid rgba(255,255,255,0.2);">', unsafe_allow_html=True)
