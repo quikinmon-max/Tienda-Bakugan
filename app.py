@@ -256,6 +256,7 @@ categorias = ["Todos", "Pyrus 🔥", "Aquos 💧", "Ventus 🍃", "Darkus 🌑",
 materiales = ["Todas", "Metálica", "Cartón"]
 simbolos_core = ["Todos", "Fist ✊", "Flaming Fist 🔥✊", "Shield 🛡️", "Magic Shield ✨🛡️", "Helix 🧬"]
 tipos_producto = ["Bakugan", "Trampa", "Carta", "BakuCore", "Vehículo", "Armamento", "BakuTech", "Extra", "Set de Batalla", "Deka"]
+tipos_con_atributo = ["Bakugan", "Trampa", "Vehículo", "Armamento", "BakuTech", "Set de Batalla", "Deka"]
 
 if logo_b64:
     st.sidebar.markdown(f'<style>.logo-celular {{ width: 100%; border-radius: 8px; margin-bottom: 10px; }} @media (max-width: 768px) {{ .logo-celular {{ width: 45%; margin-left: auto; margin-right: auto; display: block; }} }} </style> <img src="data:image/png;base64,{logo_b64}" class="logo-celular">', unsafe_allow_html=True)
@@ -419,8 +420,6 @@ elif vista_admin == "➕ Agregar Producto":
     st.title("🛠️ Agregar nuevo producto")
     tipo_prod = st.selectbox("Tipo de Producto", tipos_producto)
     nombre = st.text_input("Nombre / Descripción principal")
-    
-    tipos_con_atributo = ["Bakugan", "Trampa", "Vehículo", "Armamento", "BakuTech", "Set de Batalla", "Deka"]
     
     col1, col2, col3 = st.columns(3)
     with col1: atributo_form = st.selectbox("Atributo", categorias[1:], disabled=(tipo_prod not in tipos_con_atributo)) 
@@ -853,7 +852,7 @@ else:
                             cu_norm = " c/u" if stock_normal > 1 else ""
                             st.write(f"🟢 **Perfecta:** ${precio_normal:,.2f}{cu_norm} (Disp: {stock_normal})")
                             
-                            # --- LA REGLA DE FUEGO DE 1 PIEZA: Solo puedes añadirla si tienes 0 en el carrito ---
+                            # --- LA REGLA DE FUEGO DE 1 PIEZA ---
                             if en_carrito_normal == 0:
                                 if st.button("🛒 Añadir", key=f"add_n_{prod['_id']}", use_container_width=True):
                                     st.session_state.carrito.append({"_id": prod["_id"], "nombre": f"{prod['nombre']}", "precio": precio_normal, "variante": "normal", "tipo": tipo_real})
@@ -872,7 +871,7 @@ else:
                             cu_det = " c/u" if stock_detalle > 1 else ""
                             st.write(f"🟠 **C/Detalle:** ${precio_detalle:,.2f}{cu_det} (Disp: {stock_detalle})")
                             
-                            # --- LA REGLA DE FUEGO DE 1 PIEZA (Para Detalles) ---
+                            # --- LA REGLA DE FUEGO DE 1 PIEZA ---
                             if en_carrito_detalle == 0:
                                 if st.button("🛒 Añadir", key=f"add_d_{prod['_id']}", use_container_width=True):
                                     st.session_state.carrito.append({"_id": prod["_id"], "nombre": f"{prod['nombre']} (Detalle)", "precio": precio_detalle, "variante": "detalle", "tipo": tipo_real})
@@ -890,6 +889,15 @@ else:
                         idx_tipo = tipos_producto.index(tipo_real) if tipo_real in tipos_producto else 0
                         nuevo_tipo = st.selectbox("Categoría / Tipo", tipos_producto, index=idx_tipo, key=f"etipo_{prod['_id']}")
 
+                        # --- EDICIÓN DE ATRIBUTO ---
+                        attr_actual = prod.get('atributo', categorias[1]) 
+                        try:
+                            idx_attr = categorias[1:].index(attr_actual)
+                        except ValueError:
+                            idx_attr = 0
+                            
+                        nuevo_atributo = st.selectbox("Atributo", categorias[1:], index=idx_attr, key=f"eattr_{prod['_id']}")
+
                         np = st.number_input("Precio N.", value=float(precio_normal), step=10.0, key=f"epn_{prod['_id']}")
                         ns = st.number_input("Stock N.", value=int(stock_normal), step=1, key=f"esn_{prod['_id']}")
                         ndp = st.number_input("Precio D.", value=float(precio_detalle), step=10.0, key=f"epd_{prod['_id']}")
@@ -897,9 +905,15 @@ else:
                         ndtxt = st.text_input("Detalle", value=texto_detalle, key=f"etxt_{prod['_id']}")
                         
                         if st.button("💾 Guardar", key=f"save_{prod['_id']}", use_container_width=True):
-                            col_productos.update_one({"_id": ObjectId(prod["_id"])}, {"$set": {
+                            update_data = {
                                 "nombre": nuevo_nombre, "tipo": nuevo_tipo, "precio": np, "stock": ns, "precio_detalle": ndp, "stock_detalle": nds, "detalle": ndtxt
-                            }})
+                            }
+                            
+                            # Solo guardamos el atributo si el tipo de pieza lo requiere
+                            if nuevo_tipo in tipos_con_atributo:
+                                update_data["atributo"] = nuevo_atributo
+                                
+                            col_productos.update_one({"_id": ObjectId(prod["_id"])}, {"$set": update_data})
                             forzar_actualizacion()
                             st.rerun()
                             
