@@ -474,7 +474,6 @@ elif vista_admin == "📋 Ver Apartados":
     st.title("📋 Registro de Clientes y Apartados")
     todos_los_apartados = list(col_apartados.find({}))
     
-    # Pre-cargamos todo el catálogo en un diccionario para búsquedas flash
     catalogo_ram_entero = cargar_catalogo_textos()
     diccionario_productos = {str(p["_id"]): p for p in catalogo_ram_entero}
     
@@ -497,7 +496,6 @@ elif vista_admin == "📋 Ver Apartados":
                 fecha_str = item["fecha_apartado"].strftime("%d/%m")
                 precio_item = item.get("precio", 0.0)
                 
-                # --- MAGIA PARA MOSTRAR ATRIBUTOS EN LOS APARTADOS ---
                 prod_id_str = str(item.get("producto_id", ""))
                 prod_bd = diccionario_productos.get(prod_id_str, {})
                 info_extra = ""
@@ -517,7 +515,7 @@ elif vista_admin == "📋 Ver Apartados":
                 total_cliente += precio_item
                 total_anticipo += item.get("anticipo", 0.0)
                 fechas_venc.append(item.get("fecha_vencimiento", hora_qro()))
-                nombres_items.append(nombre_final) # Se guarda completo para el historial de ventas
+                nombres_items.append(nombre_final) 
                 
                 st.markdown(f"- **{item['nombre_producto']}** <span style='color:#f39c12;'>{info_extra}</span> <span style='font-size: 0.8em; color:#a5b1c2;'>{variante}</span> (${precio_item:,.2f}) _[Apt: {fecha_str}]_", unsafe_allow_html=True)
             
@@ -608,6 +606,20 @@ else:
         with col_tit: st.markdown("### 🔥 Baku-Market") 
         with col_busc: busqueda_texto = st.text_input("Buscar", placeholder="🔍 Buscar...", label_visibility="collapsed")
         
+        # --- AVISO DE WHATSAPP FUERA DEL CARRITO (IMPOSIBLE DE PERDER) ---
+        if 'wa_link' in st.session_state:
+            st.markdown(f"""
+            <div style="background: linear-gradient(90deg, #2ecc71, #27ae60); padding: 20px; border-radius: 10px; text-align: center; margin-bottom: 20px; box-shadow: 0px 4px 10px rgba(0,0,0,0.3);">
+                <h2 style="color: white; margin-top:0;">✅ ¡Apartado Registrado con Éxito!</h2>
+                <p style="color: white; font-size: 16px;">Tus piezas ya están bloqueadas en el sistema. <b>Solo falta un último paso:</b></p>
+                <a href="{st.session_state.wa_link}" target="_blank" style="background-color: white; color: #2ecc71; padding: 12px 20px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 18px; display: inline-block; margin-top: 10px;">📲 ENVIAR WHATSAPP DE CONFIRMACIÓN</a>
+            </div>
+            """, unsafe_allow_html=True)
+            if st.button("Cerrar este aviso (Ya envié mi WhatsApp)", use_container_width=True):
+                del st.session_state['wa_link']
+                st.rerun()
+            st.markdown("---")
+
         # ---------------- EVALUAR PROMOS Y BANNER 3x2 INTERACTIVO ----------------
         if config_promos.get("promo_3x2", False):
             elegibles_3x2 = [i for i in st.session_state.carrito if i.get("tipo") not in ["Carta", "BakuCore", "Extra"] and i.get("variante") != "detalle"]
@@ -673,13 +685,6 @@ else:
                 total_carrito += ip["precio_final"]
             
             with st.popover(f"🛒 Carrito ({cantidad_carrito}) - ${total_carrito:,.2f}", use_container_width=True):
-                if 'wa_link' in st.session_state:
-                    st.success("✅ ¡Piezas apartadas!")
-                    st.markdown(f"[**📲 HAZ CLIC AQUÍ PARA AVISARME POR WHATSAPP**]({st.session_state.wa_link})")
-                    if st.button("Cerrar Aviso", use_container_width=True):
-                        del st.session_state['wa_link']
-                        st.rerun()
-                
                 if cantidad_carrito > 0:
                     for txt in textos_promos_activas: st.success(txt)
                     for i, ip in enumerate(items_procesados):
@@ -956,8 +961,8 @@ else:
                         forzar_actualizacion()
                         st.rerun()
                         
-        if len(productos_filtrados) > st.session_state.limite_items:
-            st.markdown("---")
-            if st.button("⬇️ Cargar más piezas", use_container_width=True, type="primary"):
-                st.session_state.limite_items += 12
-                st.rerun()
+    if len(productos_filtrados) > st.session_state.limite_items:
+        st.markdown("---")
+        if st.button("⬇️ Cargar más piezas", use_container_width=True, type="primary"):
+            st.session_state.limite_items += 12
+            st.rerun()
