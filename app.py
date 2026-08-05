@@ -442,7 +442,8 @@ elif vista_admin == "⭐ Gestor de Referencias":
         cols = st.columns(4)
         for idx, ref in enumerate(refs_actuales):
             with cols[idx % 4]:
-                st.image(base64.b64decode(ref), use_column_width=True)
+                # SOLUCIÓN: Renderizado HTML para evitar el TypeError de st.image()
+                st.markdown(f'<img src="data:image/jpeg;base64,{ref}" style="width:100%; border-radius:8px; margin-bottom:10px;">', unsafe_allow_html=True)
                 if st.button("🗑️ Eliminar", key=f"del_ref_{idx}", use_container_width=True):
                     col_config.update_one({"_id": "referencias"}, {"$pull": {"imagenes": ref}})
                     forzar_actualizacion()
@@ -1001,7 +1002,7 @@ else:
                             idx_attr = categorias[1:].index(attr_actual)
                         except ValueError:
                             idx_attr = 0
-                            
+                        
                         nuevo_atributo = st.selectbox("Atributo", categorias[1:], index=idx_attr, key=f"eattr_{prod['_id']}")
 
                         np = st.number_input("Precio N.", value=float(precio_normal), step=10.0, key=f"epn_{prod['_id']}")
