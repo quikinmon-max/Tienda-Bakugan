@@ -145,6 +145,27 @@ def abrir_tutorial():
     if st.button("¡Entendido, a explorar! 🔥", use_container_width=True):
         st.rerun()
 
+# --- NUEVO MODAL GIGANTE DE WHATSAPP ---
+@st.dialog("✅ ¡Apartado Exitoso!")
+def modal_whatsapp(enlace):
+    st.success("Tus piezas ya están bloqueadas y apartadas en el sistema.")
+    st.markdown("### 🚨 ¡Falta un último paso!")
+    st.markdown("Para procesar tu pedido, es obligatorio enviarnos el mensaje de confirmación automático:")
+    
+    st.markdown(f"""
+    <div style="text-align: center; margin: 25px 0px;">
+        <a href="{enlace}" target="_blank" style="background-color: #25D366; color: white; padding: 15px 25px; text-decoration: none; border-radius: 10px; font-weight: bold; font-size: 18px; display: inline-block; box-shadow: 0px 4px 6px rgba(0,0,0,0.3);">
+            📲 ENVIAR WHATSAPP AHORA
+        </a>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    st.warning("OJO: Si no envías tu confirmación por WhatsApp en este momento, podríamos llegar a cancelar tu apartado.")
+    st.markdown("---")
+    if st.button("Cerrar esta ventana (Ya envié mi mensaje)", use_container_width=True):
+        del st.session_state['wa_link']
+        st.rerun()
+
 @st.dialog("🔍 Modo Detalle")
 def abrir_zoom(nombre_prod, imagenes_b64):
     st.markdown(f"### {nombre_prod}")
@@ -582,385 +603,360 @@ elif vista_admin == "📋 Ver Apartados":
             st.markdown("</div>", unsafe_allow_html=True)
 
 else:
-    es_modo_admin_catalogo = st.session_state.admin_autenticado and vista_admin == "Ver Catálogo"
-    catalogo_ram_entero = cargar_catalogo_textos()
-    
-    if es_modo_admin_catalogo:
-        st.title("🛠️ Administrar Catálogo e Inventario")
-        total_publicaciones = len(catalogo_ram_entero)
-        total_piezas_fisicas = sum(p.get("stock", 0) + p.get("stock_detalle", 0) for p in catalogo_ram_entero)
-        valor_estimado_total = sum((p.get("stock", 0) * p.get("precio", 0.0)) + (p.get("stock_detalle", 0) * p.get("precio_detalle", 0.0)) for p in catalogo_ram_entero)
-        
-        col_m1, col_m2, col_m3 = st.columns(3)
-        col_m1.metric("📦 Publicaciones", total_publicaciones)
-        col_m2.metric("🔢 Piezas Físicas", total_piezas_fisicas)
-        col_m3.metric("💰 Valor Inventario", f"${valor_estimado_total:,.2f}")
-        st.markdown("---")
-        busqueda_texto = st.text_input("🔍 Buscar pieza por nombre...")
-    else:
-        if not st.session_state.welcome_shown:
-            st.session_state.welcome_shown = True
-            abrir_tutorial()
+    # --- GATILLO DEL MODAL DE BIENVENIDA ---
+    if not st.session_state.welcome_shown:
+        st.session_state.welcome_shown = True
+        abrir_tutorial()
 
-        col_tit, col_busc, col_cart = st.columns([1.5, 2, 1.5])
-        with col_tit: st.markdown("### 🔥 Baku-Market") 
-        with col_busc: busqueda_texto = st.text_input("Buscar", placeholder="🔍 Buscar...", label_visibility="collapsed")
-        
-        # --- AVISO DE WHATSAPP FUERA DEL CARRITO (IMPOSIBLE DE PERDER) ---
-        if 'wa_link' in st.session_state:
+    # --- GATILLO DEL MODAL DE WHATSAPP (AQUÍ ESTÁ LA MAGIA) ---
+    if 'wa_link' in st.session_state:
+        modal_whatsapp(st.session_state.wa_link)
+
+    col_tit, col_busc, col_cart = st.columns([1.5, 2, 1.5])
+    with col_tit: st.markdown("### 🔥 Baku-Market") 
+    with col_busc: busqueda_texto = st.text_input("Buscar", placeholder="🔍 Buscar...", label_visibility="collapsed")
+    
+    # ---------------- EVALUAR PROMOS Y BANNER 3x2 INTERACTIVO ----------------
+    if config_promos.get("promo_3x2", False):
+        elegibles_3x2 = [i for i in st.session_state.carrito if i.get("tipo") not in ["Carta", "BakuCore", "Extra"] and i.get("variante") != "detalle"]
+        if len(elegibles_3x2) > 0 and len(elegibles_3x2) % 3 == 2:
+            precio_maximo_regalo = min([i['precio'] for i in elegibles_3x2])
+            if st.session_state.get("abrir_modal_3x2", False): modal_regalo_3x2(precio_maximo_regalo)
             st.markdown(f"""
-            <div style="background: linear-gradient(90deg, #2ecc71, #27ae60); padding: 20px; border-radius: 10px; text-align: center; margin-bottom: 20px; box-shadow: 0px 4px 10px rgba(0,0,0,0.3);">
-                <h2 style="color: white; margin-top:0;">✅ ¡Apartado Registrado con Éxito!</h2>
-                <p style="color: white; font-size: 16px;">Tus piezas ya están bloqueadas en el sistema. <b>Solo falta un último paso:</b></p>
-                <a href="{st.session_state.wa_link}" target="_blank" style="background-color: white; color: #2ecc71; padding: 12px 20px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 18px; display: inline-block; margin-top: 10px;">📲 ENVIAR WHATSAPP DE CONFIRMACIÓN</a>
+            <div style="background: linear-gradient(90deg, #f1c40f, #f39c12); padding: 15px; border-radius: 8px; text-align: center; color: white; margin-bottom: 10px;">
+                <h3 style="margin: 0; color: white;">🎁 ¡Tienes un 3x2 Activo!</h3>
+                <p style="margin: 0; font-size: 16px;">Llevas 2 piezas, te regalamos la 3ra (hasta <b>${precio_maximo_regalo:,.2f}</b>)</p>
             </div>
             """, unsafe_allow_html=True)
-            if st.button("Cerrar este aviso (Ya envié mi WhatsApp)", use_container_width=True):
-                del st.session_state['wa_link']
+            if st.button("👉 ABRIR MENÚ PARA ELEGIR MI REGALO 👈", type="primary", use_container_width=True):
+                st.session_state.abrir_modal_3x2 = True
                 st.rerun()
-            st.markdown("---")
 
-        # ---------------- EVALUAR PROMOS Y BANNER 3x2 INTERACTIVO ----------------
+    # --- CARRITO INTELIGENTE ---
+    with col_cart:
+        cantidad_carrito = len(st.session_state.carrito)
+        items_procesados = [{"item": item, "precio_efec": item['precio'], "es_promo_vol": False, "es_promo_3x2": False, "msg_wa": ""} for item in st.session_state.carrito]
+        conteo_categorias = {}
+        for ip in items_procesados:
+            t = ip["item"].get("tipo", "Bakugan")
+            conteo_categorias[t] = conteo_categorias.get(t, 0) + 1
+            
+        promos_volumen_aplicables, textos_promos_activas = {}, []
+        for p_vol in config_promos.get("volumen", []):
+            if p_vol["activa"] and conteo_categorias.get(p_vol["categoria"], 0) >= p_vol["min_piezas"]:
+                promos_volumen_aplicables[p_vol["categoria"]] = p_vol["precio_fijo"]
+                textos_promos_activas.append(f"🎉 ¡Promo: {p_vol['min_piezas']}+ {p_vol['categoria']}s a ${p_vol['precio_fijo']:,.2f} c/u!")
+                
+        for ip in items_procesados:
+            t = ip["item"].get("tipo", "Bakugan")
+            if t in promos_volumen_aplicables and ip['item']['precio'] > promos_volumen_aplicables[t]:
+                ip["precio_efec"] = promos_volumen_aplicables[t]
+                ip["es_promo_vol"] = True
+                
         if config_promos.get("promo_3x2", False):
-            elegibles_3x2 = [i for i in st.session_state.carrito if i.get("tipo") not in ["Carta", "BakuCore", "Extra"] and i.get("variante") != "detalle"]
-            if len(elegibles_3x2) > 0 and len(elegibles_3x2) % 3 == 2:
-                precio_maximo_regalo = min([i['precio'] for i in elegibles_3x2])
-                if st.session_state.get("abrir_modal_3x2", False): modal_regalo_3x2(precio_maximo_regalo)
-                st.markdown(f"""
-                <div style="background: linear-gradient(90deg, #f1c40f, #f39c12); padding: 15px; border-radius: 8px; text-align: center; color: white; margin-bottom: 10px;">
-                    <h3 style="margin: 0; color: white;">🎁 ¡Tienes un 3x2 Activo!</h3>
-                    <p style="margin: 0; font-size: 16px;">Llevas 2 piezas, te regalamos la 3ra (hasta <b>${precio_maximo_regalo:,.2f}</b>)</p>
-                </div>
-                """, unsafe_allow_html=True)
-                if st.button("👉 ABRIR MENÚ PARA ELEGIR MI REGALO 👈", type="primary", use_container_width=True):
-                    st.session_state.abrir_modal_3x2 = True
-                    st.rerun()
-
-        # --- CARRITO INTELIGENTE ---
-        with col_cart:
-            cantidad_carrito = len(st.session_state.carrito)
-            items_procesados = [{"item": item, "precio_efec": item['precio'], "es_promo_vol": False, "es_promo_3x2": False, "msg_wa": ""} for item in st.session_state.carrito]
-            conteo_categorias = {}
-            for ip in items_procesados:
-                t = ip["item"].get("tipo", "Bakugan")
-                conteo_categorias[t] = conteo_categorias.get(t, 0) + 1
-                
-            promos_volumen_aplicables, textos_promos_activas = {}, []
-            for p_vol in config_promos.get("volumen", []):
-                if p_vol["activa"] and conteo_categorias.get(p_vol["categoria"], 0) >= p_vol["min_piezas"]:
-                    promos_volumen_aplicables[p_vol["categoria"]] = p_vol["precio_fijo"]
-                    textos_promos_activas.append(f"🎉 ¡Promo: {p_vol['min_piezas']}+ {p_vol['categoria']}s a ${p_vol['precio_fijo']:,.2f} c/u!")
+            elegibles_cart_3x2 = sorted([ip for ip in items_procesados if ip["item"].get("tipo", "Bakugan") not in ["Carta", "BakuCore", "Extra"] and ip["item"].get("variante", "normal") != "detalle"], key=lambda x: x["precio_efec"], reverse=True)
+            piezas_regaladas = 0
+            for idx, ip in enumerate(elegibles_cart_3x2):
+                if (idx + 1) % 3 == 0:
+                    ip["precio_efec"] = 0.0
+                    ip["es_promo_3x2"] = True
+                    piezas_regaladas += 1
+            if piezas_regaladas > 0: textos_promos_activas.append(f"🌟 ¡Promo 3x2 Aplicada! ({piezas_regaladas} pieza(s) gratis)")
+        
+        subtotal_previo = sum(ip["precio_efec"] for ip in items_procesados)
+        mejor_promo_monto, mejor_pct = None, 0
+        for p_mon in config_promos.get("monto", []):
+            if p_mon["activa"] and subtotal_previo >= p_mon["min_total"] and p_mon["porcentaje"] > mejor_pct:
+                mejor_pct = p_mon["porcentaje"]
+                mejor_promo_monto = p_mon
                     
-            for ip in items_procesados:
-                t = ip["item"].get("tipo", "Bakugan")
-                if t in promos_volumen_aplicables and ip['item']['precio'] > promos_volumen_aplicables[t]:
-                    ip["precio_efec"] = promos_volumen_aplicables[t]
-                    ip["es_promo_vol"] = True
-                    
-            if config_promos.get("promo_3x2", False):
-                elegibles_cart_3x2 = sorted([ip for ip in items_procesados if ip["item"].get("tipo", "Bakugan") not in ["Carta", "BakuCore", "Extra"] and ip["item"].get("variante", "normal") != "detalle"], key=lambda x: x["precio_efec"], reverse=True)
-                piezas_regaladas = 0
-                for idx, ip in enumerate(elegibles_cart_3x2):
-                    if (idx + 1) % 3 == 0:
-                        ip["precio_efec"] = 0.0
-                        ip["es_promo_3x2"] = True
-                        piezas_regaladas += 1
-                if piezas_regaladas > 0: textos_promos_activas.append(f"🌟 ¡Promo 3x2 Aplicada! ({piezas_regaladas} pieza(s) gratis)")
+        if mejor_promo_monto: textos_promos_activas.append(f"🤑 ¡{mejor_promo_monto['porcentaje']}% OFF en tu carrito mayor a ${mejor_promo_monto['min_total']:,.2f}!")
             
-            subtotal_previo = sum(ip["precio_efec"] for ip in items_procesados)
-            mejor_promo_monto, mejor_pct = None, 0
-            for p_mon in config_promos.get("monto", []):
-                if p_mon["activa"] and subtotal_previo >= p_mon["min_total"] and p_mon["porcentaje"] > mejor_pct:
-                    mejor_pct = p_mon["porcentaje"]
-                    mejor_promo_monto = p_mon
+        total_carrito = 0
+        for ip in items_procesados:
+            if ip["es_promo_3x2"]: ip["precio_final"], ip["msg_wa"] = 0.0, " (¡Gratis 3x2!)"
+            elif ip["es_promo_vol"]: ip["precio_final"], ip["msg_wa"] = ip["precio_efec"], f" (Promo ${ip['precio_efec']})"
+            elif mejor_promo_monto: ip["precio_final"], ip["msg_wa"] = ip["precio_efec"] * (1 - (mejor_promo_monto["porcentaje"] / 100.0)), f" (-{mejor_promo_monto['porcentaje']}%)"
+            else: ip["precio_final"], ip["msg_wa"] = ip["precio_efec"], ""
+            total_carrito += ip["precio_final"]
+        
+        with st.popover(f"🛒 Carrito ({cantidad_carrito}) - ${total_carrito:,.2f}", use_container_width=True):
+            if cantidad_carrito > 0:
+                for txt in textos_promos_activas: st.success(txt)
+                for i, ip in enumerate(items_procesados):
+                    c1, c2 = st.columns([4, 1])
+                    item = ip["item"]
+                    texto_precio = f"~~${item['precio']}~~ **${ip['precio_final']:,.2f}**" if ip["precio_final"] < item['precio'] else f"**${ip['precio_final']:,.2f}**"
+                    if ip["precio_final"] == 0.0: texto_precio = f"~~${item['precio']}~~ **¡GRATIS!**"
+                    c1.markdown(f"<span style='font-size:0.9em;'>{item['nombre']} - {texto_precio}</span>", unsafe_allow_html=True)
+                    if c2.button("❌", key=f"del_cart_{i}_{item['_id']}"):
+                        st.session_state.carrito.pop(i)
+                        guardar_carrito() 
+                        st.rerun()
                         
-            if mejor_promo_monto: textos_promos_activas.append(f"🤑 ¡{mejor_promo_monto['porcentaje']}% OFF en tu carrito mayor a ${mejor_promo_monto['min_total']:,.2f}!")
+                st.markdown("---")
+                st.markdown(f"**Total a pagar: ${total_carrito:,.2f}**")
+                nom = st.text_input("Tu Nombre", key="checkout_nom")
+                tel = st.text_input("Tu WhatsApp", key="checkout_tel")
                 
-            total_carrito = 0
-            for ip in items_procesados:
-                if ip["es_promo_3x2"]: ip["precio_final"], ip["msg_wa"] = 0.0, " (¡Gratis 3x2!)"
-                elif ip["es_promo_vol"]: ip["precio_final"], ip["msg_wa"] = ip["precio_efec"], f" (Promo ${ip['precio_efec']})"
-                elif mejor_promo_monto: ip["precio_final"], ip["msg_wa"] = ip["precio_efec"] * (1 - (mejor_promo_monto["porcentaje"] / 100.0)), f" (-{mejor_promo_monto['porcentaje']}%)"
-                else: ip["precio_final"], ip["msg_wa"] = ip["precio_efec"], ""
-                total_carrito += ip["precio_final"]
-            
-            with st.popover(f"🛒 Carrito ({cantidad_carrito}) - ${total_carrito:,.2f}", use_container_width=True):
-                if cantidad_carrito > 0:
-                    for txt in textos_promos_activas: st.success(txt)
-                    for i, ip in enumerate(items_procesados):
-                        c1, c2 = st.columns([4, 1])
-                        item = ip["item"]
-                        texto_precio = f"~~${item['precio']}~~ **${ip['precio_final']:,.2f}**" if ip["precio_final"] < item['precio'] else f"**${ip['precio_final']:,.2f}**"
-                        if ip["precio_final"] == 0.0: texto_precio = f"~~${item['precio']}~~ **¡GRATIS!**"
-                        c1.markdown(f"<span style='font-size:0.9em;'>{item['nombre']} - {texto_precio}</span>", unsafe_allow_html=True)
-                        if c2.button("❌", key=f"del_cart_{i}_{item['_id']}"):
-                            st.session_state.carrito.pop(i)
-                            guardar_carrito() 
+                if st.button("Confirmar Apartado", use_container_width=True, type="primary"):
+                    if st.session_state.bloqueo_checkout:
+                        pass
+                    elif nom and tel:
+                        st.session_state.bloqueo_checkout = True
+                        
+                        if len(st.session_state.carrito) == 0:
+                            st.session_state.bloqueo_checkout = False
                             st.rerun()
                             
-                    st.markdown("---")
-                    st.markdown(f"**Total a pagar: ${total_carrito:,.2f}**")
-                    nom = st.text_input("Tu Nombre", key="checkout_nom")
-                    tel = st.text_input("Tu WhatsApp", key="checkout_tel")
-                    
-                    if st.button("Confirmar Apartado", use_container_width=True, type="primary"):
-                        if st.session_state.bloqueo_checkout:
-                            pass
-                        elif nom and tel:
-                            st.session_state.bloqueo_checkout = True
-                            
-                            if len(st.session_state.carrito) == 0:
-                                st.session_state.bloqueo_checkout = False
-                                st.rerun()
-                                
-                            error_stock = False
-                            nombres_agotados = []
+                        error_stock = False
+                        nombres_agotados = []
+                        for ip in items_procesados:
+                            item_bd = ip["item"]
+                            db_prod = col_productos.find_one({"_id": ObjectId(item_bd["_id"])})
+                            campo_stock = "stock_detalle" if item_bd.get("variante") == "detalle" else "stock"
+                            if not db_prod or db_prod.get(campo_stock, 0) <= 0:
+                                error_stock = True
+                                nombres_agotados.append(item_bd["nombre"])
+                        
+                        if error_stock:
+                            st.error(f"⚠️ ¡Uy! Alguien te ganó estas piezas mientras las tenías en el carrito: {', '.join(nombres_agotados)}. Quítalas pulsando la '❌' para confirmar el resto.")
+                            st.session_state.bloqueo_checkout = False
+                        else:
                             for ip in items_procesados:
                                 item_bd = ip["item"]
-                                db_prod = col_productos.find_one({"_id": ObjectId(item_bd["_id"])})
-                                campo_stock = "stock_detalle" if item_bd.get("variante") == "detalle" else "stock"
-                                if not db_prod or db_prod.get(campo_stock, 0) <= 0:
-                                    error_stock = True
-                                    nombres_agotados.append(item_bd["nombre"])
+                                item_bd_id = ObjectId(item_bd["_id"])
+                                db_prod = col_productos.find_one({"_id": item_bd_id})
+                                campo_stock = "stock_detalle" if item_bd.get("variante") == "detalle" and "stock_detalle" in db_prod else "stock"
+                                col_apartados.insert_one({
+                                    "producto_id": item_bd_id, "nombre_producto": item_bd["nombre"],
+                                    "precio": ip["precio_final"], "comprador_nombre": nom, "comprador_telefono": tel,
+                                    "fecha_apartado": hora_qro(), "fecha_vencimiento": hora_qro() + timedelta(days=3), "campo_stock": campo_stock, "anticipo": 0.0
+                                })
+                                col_productos.update_one({"_id": item_bd_id}, {"$inc": {campo_stock: -1}})
                             
-                            if error_stock:
-                                st.error(f"⚠️ ¡Uy! Alguien te ganó estas piezas mientras las tenías en el carrito: {', '.join(nombres_agotados)}. Quítalas pulsando la '❌' para confirmar el resto.")
-                                st.session_state.bloqueo_checkout = False
-                            else:
-                                for ip in items_procesados:
-                                    item_bd = ip["item"]
-                                    item_bd_id = ObjectId(item_bd["_id"])
-                                    db_prod = col_productos.find_one({"_id": item_bd_id})
-                                    campo_stock = "stock_detalle" if item_bd.get("variante") == "detalle" and "stock_detalle" in db_prod else "stock"
-                                    col_apartados.insert_one({
-                                        "producto_id": item_bd_id, "nombre_producto": item_bd["nombre"],
-                                        "precio": ip["precio_final"], "comprador_nombre": nom, "comprador_telefono": tel,
-                                        "fecha_apartado": hora_qro(), "fecha_vencimiento": hora_qro() + timedelta(days=3), "campo_stock": campo_stock, "anticipo": 0.0
-                                    })
-                                    col_productos.update_one({"_id": item_bd_id}, {"$inc": {campo_stock: -1}})
-                                
-                                texto_crudo = f"Hola, soy {nom}. Acabo de apartar {cantidad_carrito} piezas por un total de ${total_carrito:,.2f}.\n\nMis piezas son:\n"
-                                for ip in items_procesados: texto_crudo += f"👉 {ip['item']['nombre']} (${ip['precio_final']:,.2f}){ip['msg_wa']}\n"
-                                if mejor_promo_monto: texto_crudo += f"\n*Nota: Estoy consciente de que el descuento del {mejor_promo_monto['porcentaje']}% aplicado no cubre gastos de envío.*"
-                                
-                                st.session_state.wa_link = f"https://wa.me/4462879839?text={urllib.parse.quote(texto_crudo)}"
-                                st.session_state.carrito = [] 
-                                st.session_state.bloqueo_checkout = False
-                                guardar_carrito()
-                                forzar_actualizacion()
-                                st.rerun()
-                        else: st.warning("⚠️ Faltan datos.")
-                else: st.info("Carrito vacío.")
-
-        if not es_modo_admin_catalogo:
-            banner_frases = []
-            if config_promos.get("promo_3x2", False): 
-                eleg_banner = [i for i in st.session_state.carrito if i.get("tipo") not in ["Carta", "BakuCore", "Extra"] and i.get("variante") != "detalle"]
-                if not (len(eleg_banner) > 0 and len(eleg_banner) % 3 == 2): banner_frases.append("🌟 <b>¡SÚPER 3x2! Llevas 3, Pagas 2</b>")
-            for p in config_promos.get("volumen", []):
-                if p["activa"]: banner_frases.append(f"📦 <b>{p['min_piezas']}+ {p['categoria']}s a ${p['precio_fijo']:,.2f} c/u</b>")
-            for p in config_promos.get("monto", []):
-                if p["activa"]: banner_frases.append(f"🤑 <b>{p['porcentaje']}% OFF</b> en compras > ${p['min_total']:,.2f}")
-                    
-            if banner_frases:
-                st.markdown(f"""
-                <div style="background: linear-gradient(90deg, #ff416c, #ff4b2b); padding: 12px; border-radius: 8px; text-align: center; color: white; font-size: 15px; margin-bottom: 20px;">
-                    ✨ <b>¡PROMOS ACTIVAS!</b> ✨ <br class="mobile-break"> {" &nbsp;|&nbsp; ".join(banner_frases)}
-                </div>
-                <style>@media (min-width: 768px) {{ .mobile-break {{ display: none; }} }}</style>
-                """, unsafe_allow_html=True)
-            
-    st.markdown("---")
-
-    # ---------------- BÚSQUEDA SÚPER RÁPIDA EN RAM ----------------
-    productos_filtrados = []
-    busqueda_low = busqueda_texto.lower() if busqueda_texto else ""
-
-    for prod in catalogo_ram_entero:
-        if busqueda_low and busqueda_low not in prod.get("nombre", "").lower(): continue
-
-        tipo_p = prod.get("tipo", "Bakugan")
-        incluir = True
-
-        if tipo_busqueda in tipos_con_atributo_ui:
-            if tipo_busqueda == "Bakugans 🔥" and tipo_p != "Bakugan" and "tipo" in prod: incluir = False
-            elif tipo_busqueda == "Trampas 🪤" and tipo_p != "Trampa": incluir = False
-            elif tipo_busqueda == "Vehículos 🏎️" and tipo_p != "Vehículo": incluir = False
-            elif tipo_busqueda == "Armamentos ⚔️" and tipo_p != "Armamento": incluir = False
-            elif tipo_busqueda == "BakuTech 🦾" and tipo_p != "BakuTech": incluir = False
-            elif tipo_busqueda == "Sets de Batalla 🏟️" and tipo_p != "Set de Batalla": incluir = False
-            elif tipo_busqueda == "Deka 🌐" and tipo_p != "Deka": incluir = False
-            if incluir and sub_filtro != "Todos" and prod.get("atributo", "") != sub_filtro: incluir = False
-        elif tipo_busqueda == "Cartas 🃏":
-            if tipo_p != "Carta": incluir = False
-            if incluir and sub_filtro != "Todas" and prod.get("material", "") != sub_filtro: incluir = False
-        elif tipo_busqueda == "BakuCores 🛑":
-            if tipo_p != "BakuCore": incluir = False
-            if incluir and sub_filtro != "Todos" and prod.get("simbolo", "") != sub_filtro: incluir = False
-        elif tipo_busqueda == "Extras 🎁":
-            if tipo_p != "Extra": incluir = False
-
-        if not incluir: continue
-
-        stock_normal = prod.get('stock', 0)
-        stock_detalle = prod.get('stock_detalle', 0)
-        texto_detalle = prod.get('detalle', "")
-        
-        if texto_detalle and 'stock_detalle' not in prod:
-            stock_detalle, stock_normal = stock_normal, 0
-            
-        if es_modo_admin_catalogo:
-            if tipo_busqueda == "Piezas / Detalles 🛠️" and not texto_detalle: continue
-            if tipo_busqueda != "Piezas / Detalles 🛠️" and tipo_busqueda != "Todo el Catálogo 🌍" and texto_detalle and stock_normal == 0 and stock_detalle > 0: continue
-            productos_filtrados.append(prod)
-        else:
-            if tipo_busqueda == "Piezas / Detalles 🛠️":
-                if texto_detalle and stock_detalle > 0: productos_filtrados.append(prod)
-            elif tipo_busqueda == "Todo el Catálogo 🌍":
-                if stock_normal > 0 or stock_detalle > 0: productos_filtrados.append(prod)
-            else:
-                if stock_normal > 0: productos_filtrados.append(prod)
-
-    productos_filtrados.sort(key=lambda x: str(x["_id"]), reverse=True)
-
-    agrupados = defaultdict(list)
-    for p in productos_filtrados:
-        clave_mezcla = p.get("atributo", p.get("tipo", "Otro"))
-        agrupados[clave_mezcla].append(p)
-
-    mezclados = []
-    while agrupados:
-        for clave in list(agrupados.keys()):
-            mezclados.append(agrupados[clave].pop(0))
-            if not agrupados[clave]:
-                del agrupados[clave]
-                
-    productos_filtrados = mezclados
-
-    # ---------------- RENDERIZADO CON FOTOS PEREZOSAS ----------------
-    productos_a_mostrar = productos_filtrados[:st.session_state.limite_items]
-
-    if not productos_filtrados:
-        st.info("No encontramos piezas en esta categoría.")
-    else:
-        cols = st.columns(3)
-        for index, prod in enumerate(productos_a_mostrar):
-            info_img = obtener_foto_mongo(str(prod["_id"]))
-            
-            with cols[index % 3]:
-                st.markdown(f"### {prod['nombre']}")
-                
-                if tipo_busqueda == "Piezas / Detalles 🛠️":
-                    imagenes_del_producto = info_img.get("imagenes_detalle_b64", info_img.get("imagenes_b64", []))
-                else:
-                    imagenes_del_producto = info_img.get("imagenes_b64", [])
-                    if not imagenes_del_producto: imagenes_del_producto = info_img.get("imagenes_detalle_b64", [])
-                        
-                if not imagenes_del_producto and "imagen_b64" in info_img: 
-                    imagenes_del_producto = [info_img["imagen_b64"]]
-                
-                if imagenes_del_producto:
-                    html_galeria = '<div class="galeria-container">'
-                    for b64_img in imagenes_del_producto: html_galeria += f'<img src="data:image/jpeg;base64,{b64_img}" class="galeria-img">'
-                    html_galeria += '</div>'
-                    st.markdown(html_galeria, unsafe_allow_html=True)
-                    if len(imagenes_del_producto) > 1: st.markdown("<p style='text-align: center; color: #aaa; font-size: 13px; margin-top: -5px; margin-bottom: 5px;'>👉 Desliza la foto</p>", unsafe_allow_html=True)
-                    if st.button("🔍 Ampliar foto", key=f"zoom_{prod['_id']}", use_container_width=True): abrir_zoom(prod['nombre'], imagenes_del_producto)
-                
-                stock_normal = prod.get('stock', 0)
-                precio_normal = prod.get('precio', 0.0)
-                stock_detalle = prod.get('stock_detalle', 0)
-                precio_detalle = prod.get('precio_detalle', 0.0)
-                texto_detalle = prod.get('detalle', "")
-
-                if texto_detalle and 'stock_detalle' not in prod:
-                    stock_detalle, precio_detalle = stock_normal, precio_normal
-                    stock_normal, precio_normal = 0, 0.0
-                
-                tipo_real = prod.get("tipo", "Bakugan")
-                if tipo_real == "Bakugan" or "atributo" in prod: st.markdown(f"<div style='margin-top: 5px; margin-bottom: -10px;'><b>Atributo:</b> {prod.get('atributo', 'N/A')}</div>", unsafe_allow_html=True)
-                elif tipo_real == "Carta": st.markdown(f"<div style='margin-top: 5px; margin-bottom: -10px;'><b>Material:</b> {prod.get('material', 'N/A')}</div>", unsafe_allow_html=True)
-                elif tipo_real == "BakuCore": st.markdown(f"<div style='margin-top: 5px; margin-bottom: -10px;'><b>Símbolo:</b> {prod.get('simbolo', 'N/A')}</div>", unsafe_allow_html=True)
-                
-                if not es_modo_admin_catalogo:
-                    en_carrito_normal = sum(1 for item in st.session_state.carrito if item["_id"] == prod["_id"] and item.get("variante") == "normal")
-                    en_carrito_detalle = sum(1 for item in st.session_state.carrito if item["_id"] == prod["_id"] and item.get("variante") == "detalle")
-                    
-                    if stock_normal == 0 and stock_detalle == 0:
-                        st.markdown("🚨 **AGOTADO**", unsafe_allow_html=True)
-                    else:
-                        if stock_normal > 0:
-                            cu_norm = " c/u" if stock_normal > 1 else ""
-                            st.write(f"🟢 **Perfecta:** ${precio_normal:,.2f}{cu_norm} (Disp: {stock_normal})")
+                            texto_crudo = f"Hola, soy {nom}. Acabo de apartar {cantidad_carrito} piezas por un total de ${total_carrito:,.2f}.\n\nMis piezas son:\n"
+                            for ip in items_procesados: texto_crudo += f"👉 {ip['item']['nombre']} (${ip['precio_final']:,.2f}){ip['msg_wa']}\n"
+                            if mejor_promo_monto: texto_crudo += f"\n*Nota: Estoy consciente de que el descuento del {mejor_promo_monto['porcentaje']}% aplicado no cubre gastos de envío.*"
                             
-                            # --- LA REGLA DE FUEGO DE 1 PIEZA ---
-                            if en_carrito_normal == 0:
-                                if st.button("🛒 Añadir", key=f"add_n_{prod['_id']}", use_container_width=True):
-                                    st.session_state.carrito.append({"_id": prod["_id"], "nombre": f"{prod['nombre']}", "precio": precio_normal, "variante": "normal", "tipo": tipo_real})
-                                    guardar_carrito() 
-                                    
-                                    if config_promos.get("promo_3x2", False) and tipo_real not in ["Carta", "BakuCore", "Extra"]:
-                                        eleg = [i for i in st.session_state.carrito if i.get("tipo") not in ["Carta", "BakuCore", "Extra"] and i.get("variante") != "detalle"]
-                                        if len(eleg) % 3 == 2: st.session_state.abrir_modal_3x2 = True
-                                            
-                                    st.rerun()
-                            else: 
-                                st.button("✅ En carrito", disabled=True, key=f"max_n_{prod['_id']}", use_container_width=True)
-                            
-                        if stock_detalle > 0:
-                            st.markdown(f"<span style='color:#f39c12; font-size: 0.9em;'>⚠️ **Detalle:** {texto_detalle}</span>", unsafe_allow_html=True)
-                            cu_det = " c/u" if stock_detalle > 1 else ""
-                            st.write(f"🟠 **C/Detalle:** ${precio_detalle:,.2f}{cu_det} (Disp: {stock_detalle})")
-                            
-                            # --- LA REGLA DE FUEGO DE 1 PIEZA ---
-                            if en_carrito_detalle == 0:
-                                if st.button("🛒 Añadir", key=f"add_d_{prod['_id']}", use_container_width=True):
-                                    st.session_state.carrito.append({"_id": prod["_id"], "nombre": f"{prod['nombre']} (Detalle)", "precio": precio_detalle, "variante": "detalle", "tipo": tipo_real})
-                                    guardar_carrito() 
-                                    st.rerun()
-                            else: 
-                                st.button("✅ En carrito", disabled=True, key=f"max_d_{prod['_id']}", use_container_width=True)
-
-                if es_modo_admin_catalogo:
-                    st.markdown('<hr style="margin: 10px 0px; border: none; border-top: 1px solid rgba(255,255,255,0.2);">', unsafe_allow_html=True)
-                    
-                    with st.expander("✏️ Editar"):
-                        nuevo_nombre = st.text_input("Nombre del Producto", value=prod['nombre'], key=f"enom_{prod['_id']}")
-                        
-                        idx_tipo = tipos_producto.index(tipo_real) if tipo_real in tipos_producto else 0
-                        nuevo_tipo = st.selectbox("Categoría / Tipo", tipos_producto, index=idx_tipo, key=f"etipo_{prod['_id']}")
-
-                        attr_actual = prod.get('atributo', categorias[1]) 
-                        try:
-                            idx_attr = categorias[1:].index(attr_actual)
-                        except ValueError:
-                            idx_attr = 0
-                            
-                        nuevo_atributo = st.selectbox("Atributo", categorias[1:], index=idx_attr, key=f"eattr_{prod['_id']}")
-
-                        np = st.number_input("Precio N.", value=float(precio_normal), step=10.0, key=f"epn_{prod['_id']}")
-                        ns = st.number_input("Stock N.", value=int(stock_normal), step=1, key=f"esn_{prod['_id']}")
-                        ndp = st.number_input("Precio D.", value=float(precio_detalle), step=10.0, key=f"epd_{prod['_id']}")
-                        nds = st.number_input("Stock D.", value=int(stock_detalle), step=1, key=f"esd_{prod['_id']}")
-                        ndtxt = st.text_input("Detalle", value=texto_detalle, key=f"etxt_{prod['_id']}")
-                        
-                        if st.button("💾 Guardar", key=f"save_{prod['_id']}", use_container_width=True):
-                            update_data = {
-                                "nombre": nuevo_nombre, "tipo": nuevo_tipo, "precio": np, "stock": ns, "precio_detalle": ndp, "stock_detalle": nds, "detalle": ndtxt
-                            }
-                            
-                            if nuevo_tipo in tipos_con_atributo:
-                                update_data["atributo"] = nuevo_atributo
-                                
-                            col_productos.update_one({"_id": ObjectId(prod["_id"])}, {"$set": update_data})
+                            st.session_state.wa_link = f"https://wa.me/4462879839?text={urllib.parse.quote(texto_crudo)}"
+                            st.session_state.carrito = [] 
+                            st.session_state.bloqueo_checkout = False
+                            guardar_carrito()
                             forzar_actualizacion()
                             st.rerun()
+                    else: st.warning("⚠️ Faltan datos.")
+            else: st.info("Carrito vacío.")
+
+    if not es_modo_admin_catalogo:
+        banner_frases = []
+        if config_promos.get("promo_3x2", False): 
+            eleg_banner = [i for i in st.session_state.carrito if i.get("tipo") not in ["Carta", "BakuCore", "Extra"] and i.get("variante") != "detalle"]
+            if not (len(eleg_banner) > 0 and len(eleg_banner) % 3 == 2): banner_frases.append("🌟 <b>¡SÚPER 3x2! Llevas 3, Pagas 2</b>")
+        for p in config_promos.get("volumen", []):
+            if p["activa"]: banner_frases.append(f"📦 <b>{p['min_piezas']}+ {p['categoria']}s a ${p['precio_fijo']:,.2f} c/u</b>")
+        for p in config_promos.get("monto", []):
+            if p["activa"]: banner_frases.append(f"🤑 <b>{p['porcentaje']}% OFF</b> en compras > ${p['min_total']:,.2f}")
+                
+        if banner_frases:
+            st.markdown(f"""
+            <div style="background: linear-gradient(90deg, #ff416c, #ff4b2b); padding: 12px; border-radius: 8px; text-align: center; color: white; font-size: 15px; margin-bottom: 20px;">
+                ✨ <b>¡PROMOS ACTIVAS!</b> ✨ <br class="mobile-break"> {" &nbsp;|&nbsp; ".join(banner_frases)}
+            </div>
+            <style>@media (min-width: 768px) {{ .mobile-break {{ display: none; }} }}</style>
+            """, unsafe_allow_html=True)
+        
+st.markdown("---")
+
+# ---------------- BÚSQUEDA SÚPER RÁPIDA EN RAM ----------------
+productos_filtrados = []
+busqueda_low = busqueda_texto.lower() if busqueda_texto else ""
+
+for prod in catalogo_ram_entero:
+    if busqueda_low and busqueda_low not in prod.get("nombre", "").lower(): continue
+
+    tipo_p = prod.get("tipo", "Bakugan")
+    incluir = True
+
+    if tipo_busqueda in tipos_con_atributo_ui:
+        if tipo_busqueda == "Bakugans 🔥" and tipo_p != "Bakugan" and "tipo" in prod: incluir = False
+        elif tipo_busqueda == "Trampas 🪤" and tipo_p != "Trampa": incluir = False
+        elif tipo_busqueda == "Vehículos 🏎️" and tipo_p != "Vehículo": incluir = False
+        elif tipo_busqueda == "Armamentos ⚔️" and tipo_p != "Armamento": incluir = False
+        elif tipo_busqueda == "BakuTech 🦾" and tipo_p != "BakuTech": incluir = False
+        elif tipo_busqueda == "Sets de Batalla 🏟️" and tipo_p != "Set de Batalla": incluir = False
+        elif tipo_busqueda == "Deka 🌐" and tipo_p != "Deka": incluir = False
+        if incluir and sub_filtro != "Todos" and prod.get("atributo", "") != sub_filtro: incluir = False
+    elif tipo_busqueda == "Cartas 🃏":
+        if tipo_p != "Carta": incluir = False
+        if incluir and sub_filtro != "Todas" and prod.get("material", "") != sub_filtro: incluir = False
+    elif tipo_busqueda == "BakuCores 🛑":
+        if tipo_p != "BakuCore": incluir = False
+        if incluir and sub_filtro != "Todos" and prod.get("simbolo", "") != sub_filtro: incluir = False
+    elif tipo_busqueda == "Extras 🎁":
+        if tipo_p != "Extra": incluir = False
+
+    if not incluir: continue
+
+    stock_normal = prod.get('stock', 0)
+    stock_detalle = prod.get('stock_detalle', 0)
+    texto_detalle = prod.get('detalle', "")
+    
+    if texto_detalle and 'stock_detalle' not in prod:
+        stock_detalle, stock_normal = stock_normal, 0
+        
+    if es_modo_admin_catalogo:
+        if tipo_busqueda == "Piezas / Detalles 🛠️" and not texto_detalle: continue
+        if tipo_busqueda != "Piezas / Detalles 🛠️" and tipo_busqueda != "Todo el Catálogo 🌍" and texto_detalle and stock_normal == 0 and stock_detalle > 0: continue
+        productos_filtrados.append(prod)
+    else:
+        if tipo_busqueda == "Piezas / Detalles 🛠️":
+            if texto_detalle and stock_detalle > 0: productos_filtrados.append(prod)
+        elif tipo_busqueda == "Todo el Catálogo 🌍":
+            if stock_normal > 0 or stock_detalle > 0: productos_filtrados.append(prod)
+        else:
+            if stock_normal > 0: productos_filtrados.append(prod)
+
+productos_filtrados.sort(key=lambda x: str(x["_id"]), reverse=True)
+
+agrupados = defaultdict(list)
+for p in productos_filtrados:
+    clave_mezcla = p.get("atributo", p.get("tipo", "Otro"))
+    agrupados[clave_mezcla].append(p)
+
+mezclados = []
+while agrupados:
+    for clave in list(agrupados.keys()):
+        mezclados.append(agrupados[clave].pop(0))
+        if not agrupados[clave]:
+            del agrupados[clave]
+            
+productos_filtrados = mezclados
+
+# ---------------- RENDERIZADO CON FOTOS PEREZOSAS ----------------
+productos_a_mostrar = productos_filtrados[:st.session_state.limite_items]
+
+if not productos_filtrados:
+    st.info("No encontramos piezas en esta categoría.")
+else:
+    cols = st.columns(3)
+    for index, prod in enumerate(productos_a_mostrar):
+        info_img = obtener_foto_mongo(str(prod["_id"]))
+        
+        with cols[index % 3]:
+            st.markdown(f"### {prod['nombre']}")
+            
+            if tipo_busqueda == "Piezas / Detalles 🛠️":
+                imagenes_del_producto = info_img.get("imagenes_detalle_b64", info_img.get("imagenes_b64", []))
+            else:
+                imagenes_del_producto = info_img.get("imagenes_b64", [])
+                if not imagenes_del_producto: imagenes_del_producto = info_img.get("imagenes_detalle_b64", [])
+                    
+            if not imagenes_del_producto and "imagen_b64" in info_img: 
+                imagenes_del_producto = [info_img["imagen_b64"]]
+            
+            if imagenes_del_producto:
+                html_galeria = '<div class="galeria-container">'
+                for b64_img in imagenes_del_producto: html_galeria += f'<img src="data:image/jpeg;base64,{b64_img}" class="galeria-img">'
+                html_galeria += '</div>'
+                st.markdown(html_galeria, unsafe_allow_html=True)
+                if len(imagenes_del_producto) > 1: st.markdown("<p style='text-align: center; color: #aaa; font-size: 13px; margin-top: -5px; margin-bottom: 5px;'>👉 Desliza la foto</p>", unsafe_allow_html=True)
+                if st.button("🔍 Ampliar foto", key=f"zoom_{prod['_id']}", use_container_width=True): abrir_zoom(prod['nombre'], imagenes_del_producto)
+            
+            stock_normal = prod.get('stock', 0)
+            precio_normal = prod.get('precio', 0.0)
+            stock_detalle = prod.get('stock_detalle', 0)
+            precio_detalle = prod.get('precio_detalle', 0.0)
+            texto_detalle = prod.get('detalle', "")
+
+            if texto_detalle and 'stock_detalle' not in prod:
+                stock_detalle, precio_detalle = stock_normal, precio_normal
+                stock_normal, precio_normal = 0, 0.0
+            
+            tipo_real = prod.get("tipo", "Bakugan")
+            if tipo_real == "Bakugan" or "atributo" in prod: st.markdown(f"<div style='margin-top: 5px; margin-bottom: -10px;'><b>Atributo:</b> {prod.get('atributo', 'N/A')}</div>", unsafe_allow_html=True)
+            elif tipo_real == "Carta": st.markdown(f"<div style='margin-top: 5px; margin-bottom: -10px;'><b>Material:</b> {prod.get('material', 'N/A')}</div>", unsafe_allow_html=True)
+            elif tipo_real == "BakuCore": st.markdown(f"<div style='margin-top: 5px; margin-bottom: -10px;'><b>Símbolo:</b> {prod.get('simbolo', 'N/A')}</div>", unsafe_allow_html=True)
+            
+            if not es_modo_admin_catalogo:
+                en_carrito_normal = sum(1 for item in st.session_state.carrito if item["_id"] == prod["_id"] and item.get("variante") == "normal")
+                en_carrito_detalle = sum(1 for item in st.session_state.carrito if item["_id"] == prod["_id"] and item.get("variante") == "detalle")
+                
+                if stock_normal == 0 and stock_detalle == 0:
+                    st.markdown("🚨 **AGOTADO**", unsafe_allow_html=True)
+                else:
+                    if stock_normal > 0:
+                        cu_norm = " c/u" if stock_normal > 1 else ""
+                        st.write(f"🟢 **Perfecta:** ${precio_normal:,.2f}{cu_norm} (Disp: {stock_normal})")
+                        
+                        # --- LA REGLA DE FUEGO DE 1 PIEZA ---
+                        if en_carrito_normal == 0:
+                            if st.button("🛒 Añadir", key=f"add_n_{prod['_id']}", use_container_width=True):
+                                st.session_state.carrito.append({"_id": prod["_id"], "nombre": f"{prod['nombre']}", "precio": precio_normal, "variante": "normal", "tipo": tipo_real})
+                                guardar_carrito() 
+                                
+                                if config_promos.get("promo_3x2", False) and tipo_real not in ["Carta", "BakuCore", "Extra"]:
+                                    eleg = [i for i in st.session_state.carrito if i.get("tipo") not in ["Carta", "BakuCore", "Extra"] and i.get("variante") != "detalle"]
+                                    if len(eleg) % 3 == 2: st.session_state.abrir_modal_3x2 = True
+                                        
+                                st.rerun()
+                        else: 
+                            st.button("✅ En carrito", disabled=True, key=f"max_n_{prod['_id']}", use_container_width=True)
+                        
+                    if stock_detalle > 0:
+                        st.markdown(f"<span style='color:#f39c12; font-size: 0.9em;'>⚠️ **Detalle:** {texto_detalle}</span>", unsafe_allow_html=True)
+                        cu_det = " c/u" if stock_detalle > 1 else ""
+                        st.write(f"🟠 **C/Detalle:** ${precio_detalle:,.2f}{cu_det} (Disp: {stock_detalle})")
+                        
+                        # --- LA REGLA DE FUEGO DE 1 PIEZA ---
+                        if en_carrito_detalle == 0:
+                            if st.button("🛒 Añadir", key=f"add_d_{prod['_id']}", use_container_width=True):
+                                st.session_state.carrito.append({"_id": prod["_id"], "nombre": f"{prod['nombre']} (Detalle)", "precio": precio_detalle, "variante": "detalle", "tipo": tipo_real})
+                                guardar_carrito() 
+                                st.rerun()
+                        else: 
+                            st.button("✅ En carrito", disabled=True, key=f"max_d_{prod['_id']}", use_container_width=True)
+
+            if es_modo_admin_catalogo:
+                st.markdown('<hr style="margin: 10px 0px; border: none; border-top: 1px solid rgba(255,255,255,0.2);">', unsafe_allow_html=True)
+                
+                with st.expander("✏️ Editar"):
+                    nuevo_nombre = st.text_input("Nombre del Producto", value=prod['nombre'], key=f"enom_{prod['_id']}")
+                    
+                    idx_tipo = tipos_producto.index(tipo_real) if tipo_real in tipos_producto else 0
+                    nuevo_tipo = st.selectbox("Categoría / Tipo", tipos_producto, index=idx_tipo, key=f"etipo_{prod['_id']}")
+
+                    attr_actual = prod.get('atributo', categorias[1]) 
+                    try:
+                        idx_attr = categorias[1:].index(attr_actual)
+                    except ValueError:
+                        idx_attr = 0
+                        
+                    nuevo_atributo = st.selectbox("Atributo", categorias[1:], index=idx_attr, key=f"eattr_{prod['_id']}")
+
+                    np = st.number_input("Precio N.", value=float(precio_normal), step=10.0, key=f"epn_{prod['_id']}")
+                    ns = st.number_input("Stock N.", value=int(stock_normal), step=1, key=f"esn_{prod['_id']}")
+                    ndp = st.number_input("Precio D.", value=float(precio_detalle), step=10.0, key=f"epd_{prod['_id']}")
+                    nds = st.number_input("Stock D.", value=int(stock_detalle), step=1, key=f"esd_{prod['_id']}")
+                    ndtxt = st.text_input("Detalle", value=texto_detalle, key=f"etxt_{prod['_id']}")
+                    
+                    if st.button("💾 Guardar", key=f"save_{prod['_id']}", use_container_width=True):
+                        update_data = {
+                            "nombre": nuevo_nombre, "tipo": nuevo_tipo, "precio": np, "stock": ns, "precio_detalle": ndp, "stock_detalle": nds, "detalle": ndtxt
+                        }
+                        
+                        if nuevo_tipo in tipos_con_atributo:
+                            update_data["atributo"] = nuevo_atributo
                             
-                    if st.button("🗑️ Eliminar", key=f"del_{prod['_id']}", use_container_width=True):
-                        col_productos.delete_one({"_id": ObjectId(prod["_id"])})
+                        col_productos.update_one({"_id": ObjectId(prod["_id"])}, {"$set": update_data})
                         forzar_actualizacion()
                         st.rerun()
                         
+                if st.button("🗑️ Eliminar", key=f"del_{prod['_id']}", use_container_width=True):
+                    col_productos.delete_one({"_id": ObjectId(prod["_id"])})
+                    forzar_actualizacion()
+                    st.rerun()
+                    
     if len(productos_filtrados) > st.session_state.limite_items:
         st.markdown("---")
         if st.button("⬇️ Cargar más piezas", use_container_width=True, type="primary"):
