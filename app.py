@@ -619,10 +619,10 @@ else:
         st.markdown("---")
         busqueda_texto = st.text_input("🔍 Buscar pieza por nombre...")
     else:
-        # --- GATILLO DEL POP-UP DE BIENVENIDA ---
+        # --- SOLUCIÓN MODO DIOS: ADIÓS POP-UP CON BUGS ---
         if not st.session_state.welcome_shown:
             st.session_state.welcome_shown = True
-            abrir_tutorial()
+            st.toast("🔥 ¡Bienvenido a Baku-Market! Toca el botón ❓ en el menú de tu izquierda para ver cómo comprar.", icon="👋")
 
         # --- GATILLO DEL MODAL DE WHATSAPP ---
         if 'wa_link' in st.session_state:
@@ -840,10 +840,14 @@ else:
         clave_mezcla = p.get("atributo", p.get("tipo", "Otro"))
         agrupados[clave_mezcla].append(p)
 
+    # --- BLINDAJE ANTI-CICLOS INFINITOS ---
     mezclados = []
-    while agrupados:
+    contador_seguridad = 0
+    while agrupados and contador_seguridad < 5000:
+        contador_seguridad += 1
         for clave in list(agrupados.keys()):
-            mezclados.append(agrupados[clave].pop(0))
+            if agrupados[clave]:
+                mezclados.append(agrupados[clave].pop(0))
             if not agrupados[clave]:
                 del agrupados[clave]
                 
@@ -918,20 +922,20 @@ else:
                                     st.rerun()
                             else: 
                                 st.button("✅ En carrito", disabled=True, key=f"max_n_{prod['_id']}", use_container_width=True)
-                            
-                        if stock_detalle > 0:
-                            st.markdown(f"<span style='color:#f39c12; font-size: 0.9em;'>⚠️ **Detalle:** {texto_detalle}</span>", unsafe_allow_html=True)
-                            cu_det = " c/u" if stock_detalle > 1 else ""
-                            st.write(f"🟠 **C/Detalle:** ${precio_detalle:,.2f}{cu_det} (Disp: {stock_detalle})")
-                            
-                            # --- LA REGLA DE FUEGO DE 1 PIEZA ---
-                            if en_carrito_detalle == 0:
-                                if st.button("🛒 Añadir", key=f"add_d_{prod['_id']}", use_container_width=True):
-                                    st.session_state.carrito.append({"_id": prod["_id"], "nombre": f"{prod['nombre']} (Detalle)", "precio": precio_detalle, "variante": "detalle", "tipo": tipo_real})
-                                    guardar_carrito() 
-                                    st.rerun()
-                            else: 
-                                st.button("✅ En carrito", disabled=True, key=f"max_d_{prod['_id']}", use_container_width=True)
+                        
+                    if stock_detalle > 0:
+                        st.markdown(f"<span style='color:#f39c12; font-size: 0.9em;'>⚠️ **Detalle:** {texto_detalle}</span>", unsafe_allow_html=True)
+                        cu_det = " c/u" if stock_detalle > 1 else ""
+                        st.write(f"🟠 **C/Detalle:** ${precio_detalle:,.2f}{cu_det} (Disp: {stock_detalle})")
+                        
+                        # --- LA REGLA DE FUEGO DE 1 PIEZA ---
+                        if en_carrito_detalle == 0:
+                            if st.button("🛒 Añadir", key=f"add_d_{prod['_id']}", use_container_width=True):
+                                st.session_state.carrito.append({"_id": prod["_id"], "nombre": f"{prod['nombre']} (Detalle)", "precio": precio_detalle, "variante": "detalle", "tipo": tipo_real})
+                                guardar_carrito() 
+                                st.rerun()
+                        else: 
+                            st.button("✅ En carrito", disabled=True, key=f"max_d_{prod['_id']}", use_container_width=True)
 
             if es_modo_admin_catalogo:
                 st.markdown('<hr style="margin: 10px 0px; border: none; border-top: 1px solid rgba(255,255,255,0.2);">', unsafe_allow_html=True)
