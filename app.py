@@ -937,46 +937,46 @@ else:
                         else: 
                             st.button("✅ En carrito", disabled=True, key=f"max_d_{prod['_id']}", use_container_width=True)
 
-            if es_modo_admin_catalogo:
-                st.markdown('<hr style="margin: 10px 0px; border: none; border-top: 1px solid rgba(255,255,255,0.2);">', unsafe_allow_html=True)
-                
-                with st.expander("✏️ Editar"):
-                    nuevo_nombre = st.text_input("Nombre del Producto", value=prod['nombre'], key=f"enom_{prod['_id']}")
+                if es_modo_admin_catalogo:
+                    st.markdown('<hr style="margin: 10px 0px; border: none; border-top: 1px solid rgba(255,255,255,0.2);">', unsafe_allow_html=True)
                     
-                    idx_tipo = tipos_producto.index(tipo_real) if tipo_real in tipos_producto else 0
-                    nuevo_tipo = st.selectbox("Categoría / Tipo", tipos_producto, index=idx_tipo, key=f"etipo_{prod['_id']}")
-
-                    attr_actual = prod.get('atributo', categorias[1]) 
-                    try:
-                        idx_attr = categorias[1:].index(attr_actual)
-                    except ValueError:
-                        idx_attr = 0
+                    with st.expander("✏️ Editar"):
+                        nuevo_nombre = st.text_input("Nombre del Producto", value=prod['nombre'], key=f"enom_{prod['_id']}")
                         
-                    nuevo_atributo = st.selectbox("Atributo", categorias[1:], index=idx_attr, key=f"eattr_{prod['_id']}")
+                        idx_tipo = tipos_producto.index(tipo_real) if tipo_real in tipos_producto else 0
+                        nuevo_tipo = st.selectbox("Categoría / Tipo", tipos_producto, index=idx_tipo, key=f"etipo_{prod['_id']}")
 
-                    np = st.number_input("Precio N.", value=float(precio_normal), step=10.0, key=f"epn_{prod['_id']}")
-                    ns = st.number_input("Stock N.", value=int(stock_normal), step=1, key=f"esn_{prod['_id']}")
-                    ndp = st.number_input("Precio D.", value=float(precio_detalle), step=10.0, key=f"epd_{prod['_id']}")
-                    nds = st.number_input("Stock D.", value=int(stock_detalle), step=1, key=f"esd_{prod['_id']}")
-                    ndtxt = st.text_input("Detalle", value=texto_detalle, key=f"etxt_{prod['_id']}")
-                    
-                    if st.button("💾 Guardar", key=f"save_{prod['_id']}", use_container_width=True):
-                        update_data = {
-                            "nombre": nuevo_nombre, "tipo": nuevo_tipo, "precio": np, "stock": ns, "precio_detalle": ndp, "stock_detalle": nds, "detalle": ndtxt
-                        }
-                        
-                        if nuevo_tipo in tipos_con_atributo:
-                            update_data["atributo"] = nuevo_atributo
+                        attr_actual = prod.get('atributo', categorias[1]) 
+                        try:
+                            idx_attr = categorias[1:].index(attr_actual)
+                        except ValueError:
+                            idx_attr = 0
                             
-                        col_productos.update_one({"_id": ObjectId(prod["_id"])}, {"$set": update_data})
+                        nuevo_atributo = st.selectbox("Atributo", categorias[1:], index=idx_attr, key=f"eattr_{prod['_id']}")
+
+                        np = st.number_input("Precio N.", value=float(precio_normal), step=10.0, key=f"epn_{prod['_id']}")
+                        ns = st.number_input("Stock N.", value=int(stock_normal), step=1, key=f"esn_{prod['_id']}")
+                        ndp = st.number_input("Precio D.", value=float(precio_detalle), step=10.0, key=f"epd_{prod['_id']}")
+                        nds = st.number_input("Stock D.", value=int(stock_detalle), step=1, key=f"esd_{prod['_id']}")
+                        ndtxt = st.text_input("Detalle", value=texto_detalle, key=f"etxt_{prod['_id']}")
+                        
+                        if st.button("💾 Guardar", key=f"save_{prod['_id']}", use_container_width=True):
+                            update_data = {
+                                "nombre": nuevo_nombre, "tipo": nuevo_tipo, "precio": np, "stock": ns, "precio_detalle": ndp, "stock_detalle": nds, "detalle": ndtxt
+                            }
+                            
+                            if nuevo_tipo in tipos_con_atributo:
+                                update_data["atributo"] = nuevo_atributo
+                                
+                            col_productos.update_one({"_id": ObjectId(prod["_id"])}, {"$set": update_data})
+                            forzar_actualizacion()
+                            st.rerun()
+                            
+                    if st.button("🗑️ Eliminar", key=f"del_{prod['_id']}", use_container_width=True):
+                        col_productos.delete_one({"_id": ObjectId(prod["_id"])})
                         forzar_actualizacion()
                         st.rerun()
                         
-                if st.button("🗑️ Eliminar", key=f"del_{prod['_id']}", use_container_width=True):
-                    col_productos.delete_one({"_id": ObjectId(prod["_id"])})
-                    forzar_actualizacion()
-                    st.rerun()
-                    
     if len(productos_filtrados) > st.session_state.limite_items:
         st.markdown("---")
         if st.button("⬇️ Cargar más piezas", use_container_width=True, type="primary"):
