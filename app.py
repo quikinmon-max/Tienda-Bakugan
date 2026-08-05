@@ -66,6 +66,13 @@ def obtener_configuraciones():
     return promos, prefs
 
 @st.cache_data(ttl=300, show_spinner=False)
+def obtener_referencias():
+    ref_doc = col_config.find_one({"_id": "referencias"})
+    if not ref_doc:
+        return []
+    return ref_doc.get("imagenes", [])
+
+@st.cache_data(ttl=300, show_spinner=False)
 def cargar_catalogo_textos():
     items = list(col_productos.find({}, {"imagenes_b64": 0, "imagenes_detalle_b64": 0, "imagen_b64": 0}))
     for i in items: i["_id"] = str(i["_id"])
@@ -137,12 +144,23 @@ def abrir_tutorial():
     4. **Confirma tu Compra:** Abre tu Carrito (arriba a la derecha), llena tus datos y dale en "Confirmar". Esto nos mandará un WhatsApp para apartar tu pedido al instante.
     
     ⚠️ **Nota Importante:** Tienes 30 minutos para confirmar tu carrito antes de que las piezas se liberen nuevamente para otras personas.
-    
-    ---
-    💡 **¿Necesitas volver a leer esto?** 
-    Puedes abrir esta guía en cualquier momento desde el **Menú de la izquierda** (en celular, despliégalo tocando la flechita **>** arriba a la izquierda) y dando clic en el botón **"❓ ¿Cómo apartar/comprar?"**.
     """)
     if st.button("¡Entendido, a explorar! 🔥", use_container_width=True):
+        st.rerun()
+
+@st.dialog("⭐ Referencias de Clientes")
+def abrir_referencias():
+    refs = obtener_referencias()
+    if not refs:
+        st.info("Aún no he subido referencias, ¡pero muy pronto habrá muchas! 🔥")
+    else:
+        st.markdown("¡Gracias a todos por su confianza! Aquí te dejo algunas de nuestras entregas exitosas:")
+        html_refs = '<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px;">'
+        for r in refs:
+            html_refs += f'<img src="data:image/jpeg;base64,{r}" style="width: 100%; border-radius: 8px; object-fit: cover;">'
+        html_refs += '</div>'
+        st.markdown(html_refs, unsafe_allow_html=True)
+    if st.button("Cerrar Ventana", use_container_width=True):
         st.rerun()
 
 # --- NUEVO MODAL GIGANTE DE WHATSAPP ---
@@ -287,10 +305,12 @@ if logo_b64:
 else:
     st.sidebar.markdown("### 🛒 Mi Tienda")
 
-# --- BOTÓN DE TUTORIAL PARA DESPISTADOS ---
+# --- BOTÓN DE TUTORIAL Y REFERENCIAS ---
 st.sidebar.markdown("---")
 if st.sidebar.button("❓ ¿Cómo apartar/comprar?", use_container_width=True):
     abrir_tutorial()
+if st.sidebar.button("⭐ Mis Referencias", use_container_width=True):
+    abrir_referencias()
 st.sidebar.markdown("---")
 
 st.sidebar.header("Filtros Avanzados")
@@ -324,7 +344,7 @@ if es_admin_url:
         if st.sidebar.button("🚪 Cerrar Sesión"):
             st.session_state.admin_autenticado = False
             st.rerun()
-        vista_admin = st.sidebar.radio("Opciones de Administrador", ["Ver Catálogo", "➕ Agregar Producto", "📋 Ver Apartados", "📊 Finanzas y Ventas", "🎨 Personalizar Página", "🎁 Gestor de Promociones"])
+        vista_admin = st.sidebar.radio("Opciones de Administrador", ["Ver Catálogo", "➕ Agregar Producto", "📋 Ver Apartados", "📊 Finanzas y Ventas", "🎨 Personalizar Página", "🎁 Gestor de Promociones", "⭐ Gestor de Referencias"])
 
 st.sidebar.markdown("<div style='height: 400px;'></div>", unsafe_allow_html=True)
 
@@ -397,6 +417,36 @@ if vista_admin == "🎁 Gestor de Promociones":
         col_config.update_one({"_id": "promociones"}, {"$set": config_promos})
         forzar_actualizacion()
         st.rerun()
+
+elif vista_admin == "⭐ Gestor de Referencias":
+    st.title("⭐ Gestor de Referencias")
+    st.markdown("Sube capturas de pantalla, fotos de guías o clientes con sus paquetes para generar confianza en tus nuevos compradores.")
+    
+    nuevas_refs = st.file_uploader("📸 Subir nuevas referencias", type=["png", "jpg", "jpeg"], accept_multiple_files=True)
+    if st.button("Guardar Referencias", type="primary"):
+        if nuevas_refs:
+            refs_b64 = [comprimir_imagen(img) for img in nuevas_refs]
+            col_config.update_one({"_id": "referencias"}, {"$push": {"imagenes": {"$each": refs_b64}}}, upsert=True)
+            forzar_actualizacion()
+            st.success(f"¡{len(nuevas_refs)} referencias subidas con éxito!")
+            st.rerun()
+        else:
+            st.warning("Selecciona al menos una imagen.")
+            
+    st.markdown("---")
+    st.markdown("### 🖼️ Referencias Actuales")
+    refs_actuales = obtener_referencias()
+    if not refs_actuales:
+        st.info("No hay referencias subidas actualmente.")
+    else:
+        cols = st.columns(4)
+        for idx, ref in enumerate(refs_actuales):
+            with cols[idx % 4]:
+                st.image(base64.b64decode(ref), use_column_width=True)
+                if st.button("🗑️ Eliminar", key=f"del_ref_{idx}", use_container_width=True):
+                    col_config.update_one({"_id": "referencias"}, {"$pull": {"imagenes": ref}})
+                    forzar_actualizacion()
+                    st.rerun()
 
 elif vista_admin == "📊 Finanzas y Ventas":
     st.title("📊 Panel de Analítica Financiera")
