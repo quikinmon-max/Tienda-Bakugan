@@ -442,7 +442,6 @@ elif vista_admin == "⭐ Gestor de Referencias":
         cols = st.columns(4)
         for idx, ref in enumerate(refs_actuales):
             with cols[idx % 4]:
-                # SOLUCIÓN: Renderizado HTML para evitar el TypeError de st.image()
                 st.markdown(f'<img src="data:image/jpeg;base64,{ref}" style="width:100%; border-radius:8px; margin-bottom:10px;">', unsafe_allow_html=True)
                 if st.button("🗑️ Eliminar", key=f"del_ref_{idx}", use_container_width=True):
                     col_config.update_one({"_id": "referencias"}, {"$pull": {"imagenes": ref}})
@@ -589,7 +588,15 @@ elif vista_admin == "📋 Ver Apartados":
                 fechas_venc.append(item.get("fecha_vencimiento", hora_qro()))
                 nombres_items.append(nombre_final) 
                 
-                st.markdown(f"- **{item['nombre_producto']}** <span style='color:#f39c12;'>{info_extra}</span> <span style='font-size: 0.8em; color:#a5b1c2;'>{variante}</span> (${precio_item:,.2f}) _[Apt: {fecha_str}]_", unsafe_allow_html=True)
+                # --- BOTONCITO QUIRÚRGICO DE ELIMINACIÓN INDIVIDUAL ---
+                c_txt, c_del = st.columns([10, 1])
+                c_txt.markdown(f"- **{item['nombre_producto']}** <span style='color:#f39c12;'>{info_extra}</span> <span style='font-size: 0.8em; color:#a5b1c2;'>{variante}</span> (${precio_item:,.2f}) _[Apt: {fecha_str}]_", unsafe_allow_html=True)
+                if c_del.button("❌", key=f"del_it_{item['_id']}", help="Quitar del pedido y regresar stock"):
+                    campo = item.get("campo_stock", "stock")
+                    col_productos.update_one({"_id": item["producto_id"]}, {"$inc": {campo: 1}})
+                    col_apartados.delete_one({"_id": item["_id"]})
+                    forzar_actualizacion()
+                    st.rerun()
             
             fecha_max_venc = max(fechas_venc).strftime("%d/%m %H:%M")
             restante = total_cliente - total_anticipo
