@@ -473,6 +473,11 @@ elif vista_admin == "➕ Agregar Producto":
 elif vista_admin == "📋 Ver Apartados":
     st.title("📋 Registro de Clientes y Apartados")
     todos_los_apartados = list(col_apartados.find({}))
+    
+    # Pre-cargamos todo el catálogo en un diccionario para búsquedas flash
+    catalogo_ram_entero = cargar_catalogo_textos()
+    diccionario_productos = {str(p["_id"]): p for p in catalogo_ram_entero}
+    
     if not todos_los_apartados:
         st.info("No hay apartados activos.")
     else:
@@ -491,11 +496,30 @@ elif vista_admin == "📋 Ver Apartados":
             for item in items:
                 fecha_str = item["fecha_apartado"].strftime("%d/%m")
                 precio_item = item.get("precio", 0.0)
+                
+                # --- MAGIA PARA MOSTRAR ATRIBUTOS EN LOS APARTADOS ---
+                prod_id_str = str(item.get("producto_id", ""))
+                prod_bd = diccionario_productos.get(prod_id_str, {})
+                info_extra = ""
+                
+                if prod_bd:
+                    tipo_prod = prod_bd.get("tipo", "Bakugan")
+                    if "atributo" in prod_bd and tipo_prod in tipos_con_atributo:
+                        info_extra = f" | {prod_bd['atributo']}"
+                    elif "material" in prod_bd and tipo_prod == "Carta":
+                        info_extra = f" | {prod_bd['material']}"
+                    elif "simbolo" in prod_bd and tipo_prod == "BakuCore":
+                        info_extra = f" | {prod_bd['simbolo']}"
+                        
+                variante = " 🟠(Detalle)" if item.get("campo_stock") == "stock_detalle" else " 🟢(Perfecta)"
+                nombre_final = f"{item['nombre_producto']}{info_extra}{variante}"
+                
                 total_cliente += precio_item
                 total_anticipo += item.get("anticipo", 0.0)
                 fechas_venc.append(item.get("fecha_vencimiento", hora_qro()))
-                nombres_items.append(item['nombre_producto'])
-                st.write(f"- **{item['nombre_producto']}** (${precio_item:,.2f}) _[Apt: {fecha_str}]_")
+                nombres_items.append(nombre_final) # Se guarda completo para el historial de ventas
+                
+                st.markdown(f"- **{item['nombre_producto']}** <span style='color:#f39c12;'>{info_extra}</span> <span style='font-size: 0.8em; color:#a5b1c2;'>{variante}</span> (${precio_item:,.2f}) _[Apt: {fecha_str}]_", unsafe_allow_html=True)
             
             fecha_max_venc = max(fechas_venc).strftime("%d/%m %H:%M")
             restante = total_cliente - total_anticipo
@@ -674,14 +698,12 @@ else:
                     nom = st.text_input("Tu Nombre", key="checkout_nom")
                     tel = st.text_input("Tu WhatsApp", key="checkout_tel")
                     
-                    # --- LA MAGIA ESTÁ AQUÍ: BLOQUEO DE DOBLE CLIC ---
                     if st.button("Confirmar Apartado", use_container_width=True, type="primary"):
                         if st.session_state.bloqueo_checkout:
-                            pass # Si ya hizo clic, ignoramos el segundo clic fantasma
+                            pass
                         elif nom and tel:
-                            st.session_state.bloqueo_checkout = True # Cierra el candado
+                            st.session_state.bloqueo_checkout = True
                             
-                            # Segunda revisión de seguridad (por si el carrito ya se vació)
                             if len(st.session_state.carrito) == 0:
                                 st.session_state.bloqueo_checkout = False
                                 st.rerun()
@@ -698,7 +720,7 @@ else:
                             
                             if error_stock:
                                 st.error(f"⚠️ ¡Uy! Alguien te ganó estas piezas mientras las tenías en el carrito: {', '.join(nombres_agotados)}. Quítalas pulsando la '❌' para confirmar el resto.")
-                                st.session_state.bloqueo_checkout = False # Abre el candado si hay error
+                                st.session_state.bloqueo_checkout = False
                             else:
                                 for ip in items_procesados:
                                     item_bd = ip["item"]
@@ -718,7 +740,7 @@ else:
                                 
                                 st.session_state.wa_link = f"https://wa.me/4462879839?text={urllib.parse.quote(texto_crudo)}"
                                 st.session_state.carrito = [] 
-                                st.session_state.bloqueo_checkout = False # Abre el candado al terminar
+                                st.session_state.bloqueo_checkout = False
                                 guardar_carrito()
                                 forzar_actualizacion()
                                 st.rerun()
@@ -903,7 +925,6 @@ else:
                         idx_tipo = tipos_producto.index(tipo_real) if tipo_real in tipos_producto else 0
                         nuevo_tipo = st.selectbox("Categoría / Tipo", tipos_producto, index=idx_tipo, key=f"etipo_{prod['_id']}")
 
-                        # --- EDICIÓN DE ATRIBUTO ---
                         attr_actual = prod.get('atributo', categorias[1]) 
                         try:
                             idx_attr = categorias[1:].index(attr_actual)
@@ -923,7 +944,6 @@ else:
                                 "nombre": nuevo_nombre, "tipo": nuevo_tipo, "precio": np, "stock": ns, "precio_detalle": ndp, "stock_detalle": nds, "detalle": ndtxt
                             }
                             
-                            # Solo guardamos el atributo si el tipo de pieza lo requiere
                             if nuevo_tipo in tipos_con_atributo:
                                 update_data["atributo"] = nuevo_atributo
                                 
