@@ -472,8 +472,36 @@ elif vista_admin == "📊 Finanzas y Ventas":
                 
         st.markdown("---")
         for v in reversed(ventas):
-            neta, cobro_envio, gasto_envio = v.get('precio_total', 0) - v.get('gasto_envio', 0), v.get('ingreso_envio', 0), v.get('gasto_envio', 0)
-            st.markdown(f'<div class="tarjeta-cliente"><div style="font-size: 14px; margin-bottom: 5px;"><span style="color: #aaa;">📅 {v["fecha_venta"].strftime("%d/%m/%Y")}</span> &nbsp;|&nbsp; 👤 <b>{v["cliente"]}</b></div><div style="font-size: 15px; margin-bottom: 5px;">💰 <b>Ganancia Neta: <span style="color: #2ecc71;">${neta:,.2f}</span></b> &nbsp;|&nbsp; 📦 Cobro Envío: <span style="color: #f1c40f;">${cobro_envio:,.2f}</span> &nbsp;|&nbsp; 📉 Costo Guía: <span style="color: #e74c3c;">${gasto_envio:,.2f}</span></div><div style="font-size: 13px; color: #ccc;">📝 <i>Obs: {v.get("observaciones", "Ninguna")}</i></div></div>', unsafe_allow_html=True)
+            neta = v.get('precio_total', 0) - v.get('gasto_envio', 0)
+            cobro_envio = v.get('ingreso_envio', 0)
+            gasto_envio = v.get('gasto_envio', 0)
+            
+            # Dibujamos la tarjeta bonita
+            st.markdown(f'<div class="tarjeta-cliente" style="margin-bottom: 5px;"><div style="font-size: 14px; margin-bottom: 5px;"><span style="color: #aaa;">📅 {v["fecha_venta"].strftime("%d/%m/%Y")}</span> &nbsp;|&nbsp; 👤 <b>{v["cliente"]}</b></div><div style="font-size: 15px; margin-bottom: 5px;">💰 <b>Ganancia Neta: <span style="color: #2ecc71;">${neta:,.2f}</span></b> &nbsp;|&nbsp; 📦 Cobro Envío: <span style="color: #f1c40f;">${cobro_envio:,.2f}</span> &nbsp;|&nbsp; 📉 Costo Guía: <span style="color: #e74c3c;">${gasto_envio:,.2f}</span></div><div style="font-size: 13px; color: #ccc;">📝 <i>Obs: {v.get("observaciones", "Ninguna")}</i></div></div>', unsafe_allow_html=True)
+            
+            # --- NUEVO MENÚ PARA EDITAR VENTAS PASADAS ---
+            with st.expander("✏️ Editar Venta / Guía", expanded=False):
+                c1, c2, c3 = st.columns([1, 1, 2])
+                with c1: e_cobro = st.number_input("Cobro Envío $", value=float(cobro_envio), step=10.0, key=f"ecob_{v['_id']}")
+                with c2: e_gasto = st.number_input("Costo Guía $", value=float(gasto_envio), step=10.0, key=f"egas_{v['_id']}")
+                with c3: e_obs = st.text_input("Observaciones / Guía", value=v.get("observaciones", ""), key=f"eobs_{v['_id']}")
+                
+                if st.button("💾 Guardar Cambios", key=f"esave_{v['_id']}", use_container_width=True):
+                    # Recalculamos matemáticamente para que las ganancias cuadren perfecto
+                    precio_base = v.get("precio_productos", v.get("precio_total", 0) - v.get("ingreso_envio", 0))
+                    nuevo_precio_total = precio_base + e_cobro
+                    col_ventas.update_one(
+                        {"_id": v["_id"]},
+                        {"$set": {
+                            "ingreso_envio": e_cobro,
+                            "gasto_envio": e_gasto,
+                            "observaciones": e_obs,
+                            "precio_total": nuevo_precio_total,
+                            "precio_productos": precio_base
+                        }}
+                    )
+                    st.success("¡Venta actualizada exitosamente!")
+                    st.rerun()
 
 elif vista_admin == "🎨 Personalizar Página":
     st.title("🎨 Personaliza el Diseño de tu Tienda")
