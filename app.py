@@ -294,7 +294,8 @@ iframe[src*="badge"] {{ display: none !important; opacity: 0 !important; pointer
 """
 st.markdown(css_global, unsafe_allow_html=True)
 
-categorias = ["Todos", "Pyrus 🔥", "Aquos 💧", "Ventus 🍃", "Darkus 🌑", "Haos ✨", "Subterra 🪨"]
+# --- AURELUS AGREGADO A LAS CATEGORÍAS ---
+categorias = ["Todos", "Pyrus 🔥", "Aquos 💧", "Ventus 🍃", "Darkus 🌑", "Haos ✨", "Subterra 🪨", "Aurelus 🟡"]
 materiales = ["Todas", "Metálica", "Cartón"]
 simbolos_core = ["Todos", "Fist ✊", "Flaming Fist 🔥✊", "Shield 🛡️", "Magic Shield ✨🛡️", "Helix 🧬"]
 tipos_producto = ["Bakugan", "Trampa", "Carta", "BakuCore", "Vehículo", "Armamento", "BakuTech", "Extra", "Set de Batalla", "Deka"]
@@ -318,8 +319,9 @@ st.sidebar.header("Filtros Avanzados")
 def reset_limite():
     st.session_state.limite_items = 12
 
-tipo_busqueda = st.sidebar.selectbox("¿Qué buscas?", ["Todo el Catálogo 🌍", "Bakugans 🔥", "Trampas 🪤", "Cartas 🃏", "BakuCores 🛑", "Vehículos 🏎️", "Armamentos ⚔️", "BakuTech 🦾", "Extras 🎁", "Sets de Batalla 🏟️", "Deka 🌐", "Piezas / Detalles 🛠️"], on_change=reset_limite)
-tipos_con_atributo_ui = ["Bakugans 🔥", "Trampas 🪤", "Vehículos 🏎️", "Armamentos ⚔️", "BakuTech 🦾", "Sets de Batalla 🏟️", "Deka 🌐"]
+# --- SECCIÓN DE FUSIONES AGREGADA ---
+tipo_busqueda = st.sidebar.selectbox("¿Qué buscas?", ["Todo el Catálogo 🌍", "Bakugans 🔥", "Fusiones 🧬", "Trampas 🪤", "Cartas 🃏", "BakuCores 🛑", "Vehículos 🏎️", "Armamentos ⚔️", "BakuTech 🦾", "Extras 🎁", "Sets de Batalla 🏟️", "Deka 🌐", "Piezas / Detalles 🛠️"], on_change=reset_limite)
+tipos_con_atributo_ui = ["Bakugans 🔥", "Fusiones 🧬", "Trampas 🪤", "Vehículos 🏎️", "Armamentos ⚔️", "BakuTech 🦾", "Sets de Batalla 🏟️", "Deka 🌐"]
 
 if tipo_busqueda in tipos_con_atributo_ui: sub_filtro = st.sidebar.selectbox("Filtra por Atributo", categorias, on_change=reset_limite)
 elif tipo_busqueda == "Cartas 🃏": sub_filtro = st.sidebar.selectbox("Filtra por Material", materiales, on_change=reset_limite)
@@ -526,10 +528,12 @@ elif vista_admin == "➕ Agregar Producto":
     tipo_prod = st.selectbox("Tipo de Producto", tipos_producto)
     nombre = st.text_input("Nombre / Descripción principal")
     
-    col1, col2, col3 = st.columns(3)
+    # --- SISTEMA PARA 2 ATRIBUTOS (FUSIONES) ---
+    col1, col2, col3, col4 = st.columns(4)
     with col1: atributo_form = st.selectbox("Atributo", categorias[1:], disabled=(tipo_prod not in tipos_con_atributo)) 
-    with col2: material_form = st.selectbox("Material", materiales[1:], disabled=(tipo_prod != "Carta"))
-    with col3: simbolo_form = st.selectbox("Símbolo", simbolos_core[1:], disabled=(tipo_prod != "BakuCore"))
+    with col2: atributo_2_form = st.selectbox("Atributo 2 (Fusión)", ["Ninguno"] + categorias[1:], disabled=(tipo_prod not in tipos_con_atributo))
+    with col3: material_form = st.selectbox("Material", materiales[1:], disabled=(tipo_prod != "Carta"))
+    with col4: simbolo_form = st.selectbox("Símbolo", simbolos_core[1:], disabled=(tipo_prod != "BakuCore"))
     
     st.markdown("### 🟢 Piezas Normales (Perfectas)")
     c_pn, c_sn = st.columns(2)
@@ -561,7 +565,11 @@ elif vista_admin == "➕ Agregar Producto":
                 "precio_detalle": precio_detalle, "stock_detalle": stock_detalle, "detalle": detalle_prod,
                 "imagenes_b64": lista_imagenes_b64, "imagenes_detalle_b64": lista_imagenes_detalle_b64
             }
-            if tipo_prod in tipos_con_atributo: nuevo_prod["atributo"] = atributo_form
+            if tipo_prod in tipos_con_atributo: 
+                nuevo_prod["atributo"] = atributo_form
+                if atributo_2_form != "Ninguno":
+                    nuevo_prod["atributo_2"] = atributo_2_form
+                    
             elif tipo_prod == "Carta": nuevo_prod["material"] = material_form
             elif tipo_prod == "BakuCore": nuevo_prod["simbolo"] = simbolo_form
                 
@@ -605,7 +613,11 @@ elif vista_admin == "📋 Ver Apartados":
                 if prod_bd:
                     tipo_prod = prod_bd.get("tipo", "Bakugan")
                     if "atributo" in prod_bd and tipo_prod in tipos_con_atributo:
-                        info_extra = f" | {prod_bd['atributo']}"
+                        attr2 = prod_bd.get("atributo_2", "Ninguno")
+                        if attr2 != "Ninguno":
+                            info_extra = f" | {prod_bd['atributo']} / {attr2}"
+                        else:
+                            info_extra = f" | {prod_bd['atributo']}"
                     elif "material" in prod_bd and tipo_prod == "Carta":
                         info_extra = f" | {prod_bd['material']}"
                     elif "simbolo" in prod_bd and tipo_prod == "BakuCore":
@@ -646,7 +658,6 @@ elif vista_admin == "📋 Ver Apartados":
                     cobro_envio = st.number_input("Cobro Envío $", min_value=0.0, step=10.0, key=f"cobro_{tel}")
                     gastos = st.number_input("Costo Guía $", min_value=0.0, step=10.0, key=f"gasto_{tel}")
                     
-                    # --- EL CEREBRO DE LAS DEUDAS ---
                     total_hoy = restante + cobro_envio
                     pago_hoy = st.number_input("Pago recibido HOY $", value=float(total_hoy), min_value=0.0, step=10.0, key=f"pago_{tel}", help="¿Cuánto depositó ahorita? Si no liquidó completo, el resto se va a deuda.")
                     
@@ -654,7 +665,7 @@ elif vista_admin == "📋 Ver Apartados":
                     
                     if st.button("Confirmar Venta / Envío", key=f"btn_venta_{tel}"):
                         deuda = total_hoy - pago_hoy
-                        if deuda < 0: deuda = 0.0 # Por si te pagan de más, que no marque negativo
+                        if deuda < 0: deuda = 0.0
                         
                         col_ventas.insert_one({
                             "cliente": nombre_cliente, "telefono": tel, "productos": nombres_items,
@@ -718,12 +729,10 @@ else:
         st.markdown("---")
         busqueda_texto = st.text_input("🔍 Buscar pieza por nombre...")
     else:
-        # --- SOLUCIÓN MODO DIOS: ADIÓS POP-UP CON BUGS ---
         if not st.session_state.welcome_shown:
             st.session_state.welcome_shown = True
             st.toast("🔥 ¡Bienvenido a Baku-Market! Toca el botón ❓ en el menú de tu izquierda para ver cómo comprar.", icon="👋")
 
-        # --- GATILLO DEL MODAL DE WHATSAPP ---
         if 'wa_link' in st.session_state:
             modal_whatsapp(st.session_state.wa_link)
 
@@ -895,13 +904,19 @@ else:
 
         if tipo_busqueda in tipos_con_atributo_ui:
             if tipo_busqueda == "Bakugans 🔥" and tipo_p != "Bakugan" and "tipo" in prod: incluir = False
+            elif tipo_busqueda == "Fusiones 🧬":
+                if prod.get("atributo_2", "Ninguno") == "Ninguno": incluir = False
             elif tipo_busqueda == "Trampas 🪤" and tipo_p != "Trampa": incluir = False
             elif tipo_busqueda == "Vehículos 🏎️" and tipo_p != "Vehículo": incluir = False
             elif tipo_busqueda == "Armamentos ⚔️" and tipo_p != "Armamento": incluir = False
             elif tipo_busqueda == "BakuTech 🦾" and tipo_p != "BakuTech": incluir = False
             elif tipo_busqueda == "Sets de Batalla 🏟️" and tipo_p != "Set de Batalla": incluir = False
             elif tipo_busqueda == "Deka 🌐" and tipo_p != "Deka": incluir = False
-            if incluir and sub_filtro != "Todos" and prod.get("atributo", "") != sub_filtro: incluir = False
+            
+            if incluir and sub_filtro != "Todos":
+                if prod.get("atributo", "") != sub_filtro and prod.get("atributo_2", "Ninguno") != sub_filtro:
+                    incluir = False
+                    
         elif tipo_busqueda == "Cartas 🃏":
             if tipo_p != "Carta": incluir = False
             if incluir and sub_filtro != "Todas" and prod.get("material", "") != sub_filtro: incluir = False
@@ -993,7 +1008,14 @@ else:
                     stock_normal, precio_normal = 0, 0.0
                 
                 tipo_real = prod.get("tipo", "Bakugan")
-                if tipo_real == "Bakugan" or "atributo" in prod: st.markdown(f"<div style='margin-top: 5px; margin-bottom: -10px;'><b>Atributo:</b> {prod.get('atributo', 'N/A')}</div>", unsafe_allow_html=True)
+                if tipo_real == "Bakugan" or "atributo" in prod: 
+                    attr1 = prod.get('atributo', 'N/A')
+                    attr2 = prod.get('atributo_2', 'Ninguno')
+                    if attr2 != "Ninguno":
+                        st.markdown(f"<div style='margin-top: 5px; margin-bottom: -10px;'><b>Atributos:</b> {attr1} / {attr2}</div>", unsafe_allow_html=True)
+                    else:
+                        st.markdown(f"<div style='margin-top: 5px; margin-bottom: -10px;'><b>Atributo:</b> {attr1}</div>", unsafe_allow_html=True)
+                        
                 elif tipo_real == "Carta": st.markdown(f"<div style='margin-top: 5px; margin-bottom: -10px;'><b>Material:</b> {prod.get('material', 'N/A')}</div>", unsafe_allow_html=True)
                 elif tipo_real == "BakuCore": st.markdown(f"<div style='margin-top: 5px; margin-bottom: -10px;'><b>Símbolo:</b> {prod.get('simbolo', 'N/A')}</div>", unsafe_allow_html=True)
                 
@@ -1050,8 +1072,16 @@ else:
                             idx_attr = categorias[1:].index(attr_actual)
                         except ValueError:
                             idx_attr = 0
-                        
-                        nuevo_atributo = st.selectbox("Atributo", categorias[1:], index=idx_attr, key=f"eattr_{prod['_id']}")
+                            
+                        attr2_actual = prod.get('atributo_2', "Ninguno") 
+                        try:
+                            idx_attr2 = (["Ninguno"] + categorias[1:]).index(attr2_actual)
+                        except ValueError:
+                            idx_attr2 = 0
+
+                        c_a1, c_a2 = st.columns(2)
+                        with c_a1: nuevo_atributo = st.selectbox("Atributo", categorias[1:], index=idx_attr, key=f"eattr_{prod['_id']}")
+                        with c_a2: nuevo_atributo_2 = st.selectbox("Atributo 2 (Fusión)", ["Ninguno"] + categorias[1:], index=idx_attr2, key=f"eattr2_{prod['_id']}")
 
                         np = st.number_input("Precio N.", value=float(precio_normal), step=10.0, key=f"epn_{prod['_id']}")
                         ns = st.number_input("Stock N.", value=int(stock_normal), step=1, key=f"esn_{prod['_id']}")
@@ -1066,7 +1096,11 @@ else:
                             
                             if nuevo_tipo in tipos_con_atributo:
                                 update_data["atributo"] = nuevo_atributo
-                                
+                                if nuevo_atributo_2 != "Ninguno":
+                                    update_data["atributo_2"] = nuevo_atributo_2
+                                else:
+                                    update_data["atributo_2"] = "Ninguno"
+                                    
                             col_productos.update_one({"_id": ObjectId(prod["_id"])}, {"$set": update_data})
                             forzar_actualizacion()
                             st.rerun()
