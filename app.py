@@ -455,7 +455,8 @@ elif vista_admin == "📊 Finanzas y Ventas":
         st.info("Aún no tienes ventas registradas para analizar.")
     else:
         def calcular_metricas(lista_ventas):
-            ingresos = sum(v.get("precio_total", 0) for v in lista_ventas)
+            # Ganancia pura: Solo contamos el dinero que REALMENTE ya nos pagaron (sin contar deudas)
+            ingresos = sum((v.get("precio_total", 0) - v.get("deuda_restante", 0)) for v in lista_ventas)
             gastos = sum(v.get("gasto_envio", 0) for v in lista_ventas)
             return ingresos, gastos, ingresos - gastos
             
@@ -466,28 +467,29 @@ elif vista_admin == "📊 Finanzas y Ventas":
                 ing, gas, gan = calcular_metricas(datos_rango)
                 col1, col2, col3, col4 = st.columns(4)
                 col1.metric("📦 Vendidas", len(datos_rango))
-                col2.metric("💸 Brutos", f"${ing:,.2f}")
+                col2.metric("💸 Cobrado Bruto", f"${ing:,.2f}")
                 col3.metric("📉 Gastos", f"${gas:,.2f}")
-                col4.metric("💰 Neta", f"${gan:,.2f}")
+                col4.metric("💰 Neta (En Bolsa)", f"${gan:,.2f}")
                 
         st.markdown("---")
         for v in reversed(ventas):
-            neta = v.get('precio_total', 0) - v.get('gasto_envio', 0)
+            deuda = v.get("deuda_restante", 0.0)
+            neta = (v.get('precio_total', 0) - deuda) - v.get('gasto_envio', 0)
             cobro_envio = v.get('ingreso_envio', 0)
             gasto_envio = v.get('gasto_envio', 0)
             
-            # Dibujamos la tarjeta bonita
-            st.markdown(f'<div class="tarjeta-cliente" style="margin-bottom: 5px;"><div style="font-size: 14px; margin-bottom: 5px;"><span style="color: #aaa;">📅 {v["fecha_venta"].strftime("%d/%m/%Y")}</span> &nbsp;|&nbsp; 👤 <b>{v["cliente"]}</b></div><div style="font-size: 15px; margin-bottom: 5px;">💰 <b>Ganancia Neta: <span style="color: #2ecc71;">${neta:,.2f}</span></b> &nbsp;|&nbsp; 📦 Cobro Envío: <span style="color: #f1c40f;">${cobro_envio:,.2f}</span> &nbsp;|&nbsp; 📉 Costo Guía: <span style="color: #e74c3c;">${gasto_envio:,.2f}</span></div><div style="font-size: 13px; color: #ccc;">📝 <i>Obs: {v.get("observaciones", "Ninguna")}</i></div></div>', unsafe_allow_html=True)
+            html_deuda = f'&nbsp;|&nbsp; 🔴 <b>Deuda: <span style="color: #e74c3c;">${deuda:,.2f}</span></b>' if deuda > 0 else ""
             
-            # --- NUEVO MENÚ PARA EDITAR VENTAS PASADAS ---
-            with st.expander("✏️ Editar Venta / Guía", expanded=False):
-                c1, c2, c3 = st.columns([1, 1, 2])
+            st.markdown(f'<div class="tarjeta-cliente" style="margin-bottom: 5px;"><div style="font-size: 14px; margin-bottom: 5px;"><span style="color: #aaa;">📅 {v["fecha_venta"].strftime("%d/%m/%Y")}</span> &nbsp;|&nbsp; 👤 <b>{v["cliente"]}</b></div><div style="font-size: 15px; margin-bottom: 5px;">💰 <b>Ganancia Neta: <span style="color: #2ecc71;">${neta:,.2f}</span></b> &nbsp;|&nbsp; 📦 Cobro Envío: <span style="color: #f1c40f;">${cobro_envio:,.2f}</span> &nbsp;|&nbsp; 📉 Costo Guía: <span style="color: #e74c3c;">${gasto_envio:,.2f}</span>{html_deuda}</div><div style="font-size: 13px; color: #ccc;">📝 <i>Obs: {v.get("observaciones", "Ninguna")}</i></div></div>', unsafe_allow_html=True)
+            
+            with st.expander("✏️ Editar Venta / Liquidar Deuda", expanded=False):
+                c1, c2, c3, c4 = st.columns([1, 1, 1, 2])
                 with c1: e_cobro = st.number_input("Cobro Envío $", value=float(cobro_envio), step=10.0, key=f"ecob_{v['_id']}")
                 with c2: e_gasto = st.number_input("Costo Guía $", value=float(gasto_envio), step=10.0, key=f"egas_{v['_id']}")
-                with c3: e_obs = st.text_input("Observaciones / Guía", value=v.get("observaciones", ""), key=f"eobs_{v['_id']}")
+                with c3: e_deuda = st.number_input("Deuda Pendiente $", value=float(deuda), step=10.0, key=f"edeu_{v['_id']}", help="Si el cliente ya te pagó el resto, bájalo a $0.00")
+                with c4: e_obs = st.text_input("Observaciones / Guía", value=v.get("observaciones", ""), key=f"eobs_{v['_id']}")
                 
                 if st.button("💾 Guardar Cambios", key=f"esave_{v['_id']}", use_container_width=True):
-                    # Recalculamos matemáticamente para que las ganancias cuadren perfecto
                     precio_base = v.get("precio_productos", v.get("precio_total", 0) - v.get("ingreso_envio", 0))
                     nuevo_precio_total = precio_base + e_cobro
                     col_ventas.update_one(
@@ -495,6 +497,7 @@ elif vista_admin == "📊 Finanzas y Ventas":
                         {"$set": {
                             "ingreso_envio": e_cobro,
                             "gasto_envio": e_gasto,
+                            "deuda_restante": e_deuda,
                             "observaciones": e_obs,
                             "precio_total": nuevo_precio_total,
                             "precio_productos": precio_base
@@ -616,7 +619,6 @@ elif vista_admin == "📋 Ver Apartados":
                 fechas_venc.append(item.get("fecha_vencimiento", hora_qro()))
                 nombres_items.append(nombre_final) 
                 
-                # --- BOTONCITO QUIRÚRGICO DE ELIMINACIÓN INDIVIDUAL ---
                 c_txt, c_del = st.columns([10, 1])
                 c_txt.markdown(f"- **{item['nombre_producto']}** <span style='color:#f39c12;'>{info_extra}</span> <span style='font-size: 0.8em; color:#a5b1c2;'>{variante}</span> (${precio_item:,.2f}) _[Apt: {fecha_str}]_", unsafe_allow_html=True)
                 if c_del.button("❌", key=f"del_it_{item['_id']}", help="Quitar del pedido y regresar stock"):
@@ -640,19 +642,30 @@ elif vista_admin == "📋 Ver Apartados":
             col_conf, col_pro, col_canc, col_notif = st.columns(4)
             with col_conf:
                 with st.expander("✅ Vender"):
+                    st.markdown(f"<span style='font-size:14px; color:#aaa;'>Restante de piezas: ${restante:,.2f}</span>", unsafe_allow_html=True)
                     cobro_envio = st.number_input("Cobro Envío $", min_value=0.0, step=10.0, key=f"cobro_{tel}")
                     gastos = st.number_input("Costo Guía $", min_value=0.0, step=10.0, key=f"gasto_{tel}")
-                    obs = st.text_input("Obs", key=f"obs_{tel}")
-                    if st.button("Confirmar", key=f"btn_venta_{tel}"):
+                    
+                    # --- EL CEREBRO DE LAS DEUDAS ---
+                    total_hoy = restante + cobro_envio
+                    pago_hoy = st.number_input("Pago recibido HOY $", value=float(total_hoy), min_value=0.0, step=10.0, key=f"pago_{tel}", help="¿Cuánto depositó ahorita? Si no liquidó completo, el resto se va a deuda.")
+                    
+                    obs = st.text_input("Obs / Guía", key=f"obs_{tel}")
+                    
+                    if st.button("Confirmar Venta / Envío", key=f"btn_venta_{tel}"):
+                        deuda = total_hoy - pago_hoy
+                        if deuda < 0: deuda = 0.0 # Por si te pagan de más, que no marque negativo
+                        
                         col_ventas.insert_one({
                             "cliente": nombre_cliente, "telefono": tel, "productos": nombres_items,
                             "precio_productos": total_cliente, "ingreso_envio": cobro_envio, "anticipo_previo": total_anticipo,
                             "precio_total": total_cliente + cobro_envio, "gasto_envio": gastos,
+                            "deuda_restante": deuda,
                             "observaciones": obs, "fecha_venta": hora_qro()
                         })
                         for item in items: col_apartados.delete_one({"_id": item["_id"]})
                         forzar_actualizacion()
-                        st.success("¡Venta registrada!")
+                        st.success("¡Venta y/o envío registrado!")
                         st.rerun()
                         
             with col_pro:
