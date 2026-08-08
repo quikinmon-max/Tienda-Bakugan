@@ -477,6 +477,7 @@ elif vista_admin == "📊 Finanzas y Ventas":
         st.info("Aún no tienes ventas registradas para analizar.")
     else:
         def calcular_metricas(lista_ventas):
+            # Ganancia pura: Solo contamos el dinero que REALMENTE ya nos pagaron (sin contar deudas)
             ingresos = sum((v.get("precio_total", 0) - v.get("deuda_restante", 0)) for v in lista_ventas)
             gastos = sum(v.get("gasto_envio", 0) for v in lista_ventas)
             return ingresos, gastos, ingresos - gastos
@@ -728,11 +729,12 @@ elif vista_admin == "📋 Ver Apartados":
 
             with col_notif:
                 with st.expander("📱 Notificar"):
+                    texto_bienvenida = f"¡Hola {nombre_cliente}! 👋 Te hablamos de Baku-Market. 🔥 Vimos que acabas de realizar tu apartado de {len(items)} piezas por un total de ${total_cliente:,.2f}. Te escribimos por aquí para confirmar tu pedido y pasarte los datos para el depósito. ¡Gracias por tu confianza! 🐉"
                     texto_expiracion = f"Hola {nombre_cliente}, te escribo de Baku-Market. Te recuerdo que tu apartado de {len(items)} piezas (Restante: ${restante:,.2f}) vence el {fecha_max_venc}. ¿Gusta que revisemos un abono/prórroga o procesamos tu envío?"
                     texto_cancelacion = f"Hola {nombre_cliente}. Te notificamos que el tiempo de tu apartado concluyó en Baku-Market y tu pedido de {len(items)} piezas ha sido cancelado, liberando el stock. ¡Gracias por tu comprensión!"
                     
-                    # --- ENLACES WA A LA API DIRECTA TAMBIÉN AQUÍ ---
-                    st.markdown(f"[⚠️ Aviso Expiración](https://api.whatsapp.com/send?phone=52{tel.replace(' ', '')}&text={urllib.parse.quote(texto_expiracion)})", unsafe_allow_html=True)
+                    st.markdown(f"[👋 Mensaje de Bienvenida](https://api.whatsapp.com/send?phone=52{tel.replace(' ', '')}&text={urllib.parse.quote(texto_bienvenida)})", unsafe_allow_html=True)
+                    st.markdown(f"<br>[⚠️ Aviso Expiración](https://api.whatsapp.com/send?phone=52{tel.replace(' ', '')}&text={urllib.parse.quote(texto_expiracion)})", unsafe_allow_html=True)
                     st.markdown(f"<br>[🚫 Aviso Cancelación](https://api.whatsapp.com/send?phone=52{tel.replace(' ', '')}&text={urllib.parse.quote(texto_cancelacion)})", unsafe_allow_html=True)
             st.markdown("</div>", unsafe_allow_html=True)
 
@@ -827,11 +829,6 @@ else:
                 elif mejor_promo_monto: ip["precio_final"], ip["msg_wa"] = ip["precio_efec"] * (1 - (mejor_promo_monto["porcentaje"] / 100.0)), f" (-{mejor_promo_monto['porcentaje']}%)"
                 else: ip["precio_final"], ip["msg_wa"] = ip["precio_efec"], ""
                 total_carrito += ip["precio_final"]
-                
-            # --- EVALUAR PROMO DE ENVÍO GRATIS EN EL CARRITO ---
-            promo_envio = config_promos.get("envio_gratis", {})
-            if promo_envio.get("activa", False) and total_carrito >= promo_envio.get("monto_minimo", 2500.0):
-                textos_promos_activas.append(f"🚚 ¡Felicidades! Tu compra califica para ENVÍO GRATIS.")
             
             with st.popover(f"🛒 Carrito ({cantidad_carrito}) - ${total_carrito:,.2f}", use_container_width=True):
                 if cantidad_carrito > 0:
@@ -893,6 +890,7 @@ else:
                                 if mejor_promo_monto: texto_crudo += f"\n*Nota: Estoy consciente de que el descuento del {mejor_promo_monto['porcentaje']}% aplicado no cubre gastos de envío.*"
                                 
                                 # --- AVISO DE ENVÍO GRATIS EN WA ---
+                                promo_envio = config_promos.get("envio_gratis", {})
                                 if promo_envio.get("activa", False) and total_carrito >= promo_envio.get("monto_minimo", 2500.0):
                                     texto_crudo += f"\n\n🚚 *Nota extra: ¡Mi pedido califica para ENVÍO GRATIS!*"
 
