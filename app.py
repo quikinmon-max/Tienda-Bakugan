@@ -55,13 +55,22 @@ def obtener_configuraciones():
         promos = {
             "volumen": [{"id": str(uuid.uuid4())[:8], "categoria": "Carta", "min_piezas": 5, "precio_fijo": 40.0, "activa": True}],
             "monto": [{"id": str(uuid.uuid4())[:8], "min_total": 2000.0, "porcentaje": 10.0, "activa": True}],
-            "promo_3x2": False
+            "promo_3x2": False,
+            "envio_gratis": {"activa": False, "monto_minimo": 2500.0}
         }
         col_config.insert_one({"_id": "promociones", **promos})
-    elif "promo_3x2" not in promos:
-        promos["promo_3x2"] = False
-        col_config.update_one({"_id": "promociones"}, {"$set": {"promo_3x2": False}})
-    
+    else:
+        actualizar = False
+        if "promo_3x2" not in promos:
+            promos["promo_3x2"] = False
+            actualizar = True
+        if "envio_gratis" not in promos:
+            promos["envio_gratis"] = {"activa": False, "monto_minimo": 2500.0}
+            actualizar = True
+            
+        if actualizar:
+            col_config.update_one({"_id": "promociones"}, {"$set": promos})
+            
     prefs = col_config.find_one({"_id": "sitio_prefs"})
     return promos, prefs
 
@@ -163,7 +172,7 @@ def abrir_referencias():
     if st.button("Cerrar Ventana", use_container_width=True):
         st.rerun()
 
-# --- NUEVO MODAL GIGANTE DE WHATSAPP ---
+# --- NUEVO MODAL GIGANTE DE WHATSAPP (CON LINK UNIVERSAL) ---
 @st.dialog("✅ ¡Apartado Exitoso!")
 def modal_whatsapp(enlace):
     st.success("Tus piezas ya están bloqueadas y apartadas en el sistema.")
@@ -321,7 +330,7 @@ def reset_limite():
 
 # --- SECCIÓN DE FUSIONES AGREGADA ---
 tipo_busqueda = st.sidebar.selectbox("¿Qué buscas?", ["Todo el Catálogo 🌍", "Bakugans 🔥", "Fusiones 🧬", "Trampas 🪤", "Cartas 🃏", "BakuCores 🛑", "Vehículos 🏎️", "Armamentos ⚔️", "BakuTech 🦾", "Extras 🎁", "Sets de Batalla 🏟️", "Deka 🌐", "Piezas / Detalles 🛠️"], on_change=reset_limite)
-tipos_con_atributo_ui = ["Bakugans 🔥", "Fusiones 🧬", "Trampas 🪤", "Vehículos 🏎️", "Armamentos ⚔️", "BakuTech 🦾", "Sets de Batalla 🏟️", "Deka 🌐"]
+tipos_con_atributo_ui = ["Bakugans 🔥", "Trampas 🪤", "Vehículos 🏎️", "Armamentos ⚔️", "BakuTech 🦾", "Sets de Batalla 🏟️", "Deka 🌐"]
 
 if tipo_busqueda in tipos_con_atributo_ui: sub_filtro = st.sidebar.selectbox("Filtra por Atributo", categorias, on_change=reset_limite)
 elif tipo_busqueda == "Cartas 🃏": sub_filtro = st.sidebar.selectbox("Filtra por Material", materiales, on_change=reset_limite)
@@ -387,6 +396,17 @@ if vista_admin == "🎁 Gestor de Promociones":
     activa_3x2 = c2_3x2.toggle("Activada", value=config_promos.get("promo_3x2", False), key="tg_3x2")
     if activa_3x2 != config_promos.get("promo_3x2", False):
         config_promos["promo_3x2"] = activa_3x2
+        cambios = True
+
+    # --- NUEVA PROMO DE ENVÍO GRATIS ---
+    st.markdown("#### 🚚 Envío Gratis")
+    c1_env, c2_env, _ = st.columns([6, 2, 2])
+    monto_env = config_promos.get("envio_gratis", {}).get("monto_minimo", 2500.0)
+    c1_env.info(f"Envío gratis en compras desde **${monto_env:,.2f}**")
+    activa_env = c2_env.toggle("Activada", value=config_promos.get("envio_gratis", {}).get("activa", False), key="tg_env")
+    if activa_env != config_promos.get("envio_gratis", {}).get("activa", False):
+        config_promos["envio_gratis"]["activa"] = activa_env
+        config_promos["envio_gratis"]["monto_minimo"] = monto_env
         cambios = True
 
     if config_promos.get("volumen"):
@@ -457,7 +477,6 @@ elif vista_admin == "📊 Finanzas y Ventas":
         st.info("Aún no tienes ventas registradas para analizar.")
     else:
         def calcular_metricas(lista_ventas):
-            # Ganancia pura: Solo contamos el dinero que REALMENTE ya nos pagaron (sin contar deudas)
             ingresos = sum((v.get("precio_total", 0) - v.get("deuda_restante", 0)) for v in lista_ventas)
             gastos = sum(v.get("gasto_envio", 0) for v in lista_ventas)
             return ingresos, gastos, ingresos - gastos
@@ -528,7 +547,6 @@ elif vista_admin == "➕ Agregar Producto":
     tipo_prod = st.selectbox("Tipo de Producto", tipos_producto)
     nombre = st.text_input("Nombre / Descripción principal")
     
-    # --- SISTEMA PARA 2 ATRIBUTOS (FUSIONES) ---
     col1, col2, col3, col4 = st.columns(4)
     with col1: atributo_form = st.selectbox("Atributo", categorias[1:], disabled=(tipo_prod not in tipos_con_atributo)) 
     with col2: atributo_2_form = st.selectbox("Atributo 2 (Fusión)", ["Ninguno"] + categorias[1:], disabled=(tipo_prod not in tipos_con_atributo))
@@ -654,6 +672,10 @@ elif vista_admin == "📋 Ver Apartados":
             col_conf, col_pro, col_canc, col_notif = st.columns(4)
             with col_conf:
                 with st.expander("✅ Vender"):
+                    # --- AVISO VISUAL DE ENVÍO GRATIS PARA EL ADMIN ---
+                    if config_promos.get("envio_gratis", {}).get("activa", False) and total_cliente >= config_promos.get("envio_gratis", {}).get("monto_minimo", 2500.0):
+                        st.success("🚚 ¡Este cliente califica para ENVÍO GRATIS!")
+                        
                     st.markdown(f"<span style='font-size:14px; color:#aaa;'>Restante de piezas: ${restante:,.2f}</span>", unsafe_allow_html=True)
                     cobro_envio = st.number_input("Cobro Envío $", min_value=0.0, step=10.0, key=f"cobro_{tel}")
                     gastos = st.number_input("Costo Guía $", min_value=0.0, step=10.0, key=f"gasto_{tel}")
@@ -708,8 +730,10 @@ elif vista_admin == "📋 Ver Apartados":
                 with st.expander("📱 Notificar"):
                     texto_expiracion = f"Hola {nombre_cliente}, te escribo de Baku-Market. Te recuerdo que tu apartado de {len(items)} piezas (Restante: ${restante:,.2f}) vence el {fecha_max_venc}. ¿Gusta que revisemos un abono/prórroga o procesamos tu envío?"
                     texto_cancelacion = f"Hola {nombre_cliente}. Te notificamos que el tiempo de tu apartado concluyó en Baku-Market y tu pedido de {len(items)} piezas ha sido cancelado, liberando el stock. ¡Gracias por tu comprensión!"
-                    st.markdown(f"[⚠️ Aviso Expiración](https://wa.me/{tel.replace(' ', '')}?text={urllib.parse.quote(texto_expiracion)})", unsafe_allow_html=True)
-                    st.markdown(f"<br>[🚫 Aviso Cancelación](https://wa.me/{tel.replace(' ', '')}?text={urllib.parse.quote(texto_cancelacion)})", unsafe_allow_html=True)
+                    
+                    # --- ENLACES WA A LA API DIRECTA TAMBIÉN AQUÍ ---
+                    st.markdown(f"[⚠️ Aviso Expiración](https://api.whatsapp.com/send?phone=52{tel.replace(' ', '')}&text={urllib.parse.quote(texto_expiracion)})", unsafe_allow_html=True)
+                    st.markdown(f"<br>[🚫 Aviso Cancelación](https://api.whatsapp.com/send?phone=52{tel.replace(' ', '')}&text={urllib.parse.quote(texto_cancelacion)})", unsafe_allow_html=True)
             st.markdown("</div>", unsafe_allow_html=True)
 
 else:
@@ -803,6 +827,11 @@ else:
                 elif mejor_promo_monto: ip["precio_final"], ip["msg_wa"] = ip["precio_efec"] * (1 - (mejor_promo_monto["porcentaje"] / 100.0)), f" (-{mejor_promo_monto['porcentaje']}%)"
                 else: ip["precio_final"], ip["msg_wa"] = ip["precio_efec"], ""
                 total_carrito += ip["precio_final"]
+                
+            # --- EVALUAR PROMO DE ENVÍO GRATIS EN EL CARRITO ---
+            promo_envio = config_promos.get("envio_gratis", {})
+            if promo_envio.get("activa", False) and total_carrito >= promo_envio.get("monto_minimo", 2500.0):
+                textos_promos_activas.append(f"🚚 ¡Felicidades! Tu compra califica para ENVÍO GRATIS.")
             
             with st.popover(f"🛒 Carrito ({cantidad_carrito}) - ${total_carrito:,.2f}", use_container_width=True):
                 if cantidad_carrito > 0:
@@ -863,7 +892,13 @@ else:
                                 for ip in items_procesados: texto_crudo += f"👉 {ip['item']['nombre']} (${ip['precio_final']:,.2f}){ip['msg_wa']}\n"
                                 if mejor_promo_monto: texto_crudo += f"\n*Nota: Estoy consciente de que el descuento del {mejor_promo_monto['porcentaje']}% aplicado no cubre gastos de envío.*"
                                 
-                                st.session_state.wa_link = f"https://wa.me/4462879839?text={urllib.parse.quote(texto_crudo)}"
+                                # --- AVISO DE ENVÍO GRATIS EN WA ---
+                                if promo_envio.get("activa", False) and total_carrito >= promo_envio.get("monto_minimo", 2500.0):
+                                    texto_crudo += f"\n\n🚚 *Nota extra: ¡Mi pedido califica para ENVÍO GRATIS!*"
+
+                                # --- ENLACE A WHATSAPP BLINDADO PARA IPHONE/ANDROID ---
+                                st.session_state.wa_link = f"https://api.whatsapp.com/send?phone=524462879839&text={urllib.parse.quote(texto_crudo)}"
+                                
                                 st.session_state.carrito = [] 
                                 st.session_state.bloqueo_checkout = False
                                 guardar_carrito()
@@ -881,6 +916,10 @@ else:
                 if p["activa"]: banner_frases.append(f"📦 <b>{p['min_piezas']}+ {p['categoria']}s a ${p['precio_fijo']:,.2f} c/u</b>")
             for p in config_promos.get("monto", []):
                 if p["activa"]: banner_frases.append(f"🤑 <b>{p['porcentaje']}% OFF</b> en compras > ${p['min_total']:,.2f}")
+            
+            if config_promos.get("envio_gratis", {}).get("activa", False):
+                m_env = config_promos["envio_gratis"].get("monto_minimo", 2500.0)
+                banner_frases.append(f"🚚 <b>ENVÍO GRATIS</b> en compras >= ${m_env:,.2f}")
                     
             if banner_frases:
                 st.markdown(f"""
