@@ -477,7 +477,6 @@ elif vista_admin == "📊 Finanzas y Ventas":
         st.info("Aún no tienes ventas registradas para analizar.")
     else:
         def calcular_metricas(lista_ventas):
-            # Ganancia pura: Solo contamos el dinero que REALMENTE ya nos pagaron (sin contar deudas)
             ingresos = sum((v.get("precio_total", 0) - v.get("deuda_restante", 0)) for v in lista_ventas)
             gastos = sum(v.get("gasto_envio", 0) for v in lista_ventas)
             return ingresos, gastos, ingresos - gastos
@@ -650,8 +649,19 @@ elif vista_admin == "📋 Ver Apartados":
                 fechas_venc.append(item.get("fecha_vencimiento", hora_qro()))
                 nombres_items.append(nombre_final) 
                 
-                c_txt, c_del = st.columns([10, 1])
+                # --- BOTONCITO QUIRÚRGICO Y DE VISUALIZACIÓN ---
+                c_txt, c_ver, c_del = st.columns([8, 1, 1])
                 c_txt.markdown(f"- **{item['nombre_producto']}** <span style='color:#f39c12;'>{info_extra}</span> <span style='font-size: 0.8em; color:#a5b1c2;'>{variante}</span> (${precio_item:,.2f}) _[Apt: {fecha_str}]_", unsafe_allow_html=True)
+                
+                if c_ver.button("🖼️", key=f"ver_it_{item['_id']}", help="Ver fotos de esta pieza"):
+                    info_img = obtener_foto_mongo(prod_id_str)
+                    imgs = info_img.get("imagenes_detalle_b64", []) if item.get("campo_stock") == "stock_detalle" else info_img.get("imagenes_b64", [])
+                    if not imgs: imgs = info_img.get("imagenes_b64", [])
+                    if imgs:
+                        abrir_zoom(nombre_final, imgs)
+                    else:
+                        st.toast("No hay foto guardada para esta pieza ❌")
+
                 if c_del.button("❌", key=f"del_it_{item['_id']}", help="Quitar del pedido y regresar stock"):
                     campo = item.get("campo_stock", "stock")
                     col_productos.update_one({"_id": item["producto_id"]}, {"$inc": {campo: 1}})
@@ -673,7 +683,6 @@ elif vista_admin == "📋 Ver Apartados":
             col_conf, col_pro, col_canc, col_notif = st.columns(4)
             with col_conf:
                 with st.expander("✅ Vender"):
-                    # --- AVISO VISUAL DE ENVÍO GRATIS PARA EL ADMIN ---
                     if config_promos.get("envio_gratis", {}).get("activa", False) and total_cliente >= config_promos.get("envio_gratis", {}).get("monto_minimo", 2500.0):
                         st.success("🚚 ¡Este cliente califica para ENVÍO GRATIS!")
                         
@@ -889,12 +898,10 @@ else:
                                 for ip in items_procesados: texto_crudo += f"👉 {ip['item']['nombre']} (${ip['precio_final']:,.2f}){ip['msg_wa']}\n"
                                 if mejor_promo_monto: texto_crudo += f"\n*Nota: Estoy consciente de que el descuento del {mejor_promo_monto['porcentaje']}% aplicado no cubre gastos de envío.*"
                                 
-                                # --- AVISO DE ENVÍO GRATIS EN WA ---
                                 promo_envio = config_promos.get("envio_gratis", {})
                                 if promo_envio.get("activa", False) and total_carrito >= promo_envio.get("monto_minimo", 2500.0):
                                     texto_crudo += f"\n\n🚚 *Nota extra: ¡Mi pedido califica para ENVÍO GRATIS!*"
 
-                                # --- ENLACE A WHATSAPP BLINDADO PARA IPHONE/ANDROID ---
                                 st.session_state.wa_link = f"https://api.whatsapp.com/send?phone=524462879839&text={urllib.parse.quote(texto_crudo)}"
                                 
                                 st.session_state.carrito = [] 
