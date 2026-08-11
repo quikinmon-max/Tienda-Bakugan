@@ -152,7 +152,13 @@ def abrir_tutorial():
     3. **Checa las Promos:** ¡El sistema te aplicará descuentos o regalos en automático si cumples las condiciones del banner!
     4. **Confirma tu Compra:** Abre tu Carrito (arriba a la derecha), llena tus datos y dale en "Confirmar". Esto nos mandará un WhatsApp para apartar tu pedido al instante.
     
-    ⚠️ **Nota Importante:** Tienes 30 minutos para confirmar tu carrito antes de que las piezas se liberen nuevamente para otras personas.
+    ⚠️ **Nota Importante del Carrito:** Tienes 30 minutos para confirmar tu carrito antes de que las piezas se liberen nuevamente para otras personas.
+    
+    ---
+    ### ⏱️ REGLAS DE APARTADO (¡Importante!)
+    * Para que tu apartado sea válido y se congele la mercancía a tu nombre, es **obligatorio dar un anticipo del 10%** del valor total de tu pedido. Si no hay anticipo, las piezas se liberan para otros compradores.
+    * Una vez dado el anticipo, cuentas con **4 días exactos** para liquidar el resto de tu pedido.
+    * 🚨 **OJO:** En caso de dar tu anticipo del 10% y no liquidar la mercancía dentro del tiempo establecido (4 días), **se pierden las piezas y el dinero dado como anticipo** sin excepciones. ¡Evita penalizaciones!
     """)
     if st.button("¡Entendido, a explorar! 🔥", use_container_width=True):
         st.rerun()
@@ -187,7 +193,7 @@ def modal_whatsapp(enlace):
     </div>
     """, unsafe_allow_html=True)
     
-    st.warning("OJO: Si no envías tu confirmación por WhatsApp en este momento, podríamos llegar a cancelar tu apartado.")
+    st.warning("OJO: Recuerda que necesitas depositar el 10% de anticipo para que tu apartado sea válido. De lo contrario, podríamos llegar a cancelar tu pedido.")
     st.markdown("---")
     if st.button("Cerrar esta ventana (Ya envié mi mensaje)", use_container_width=True):
         del st.session_state['wa_link']
@@ -477,6 +483,7 @@ elif vista_admin == "📊 Finanzas y Ventas":
         st.info("Aún no tienes ventas registradas para analizar.")
     else:
         def calcular_metricas(lista_ventas):
+            # Ganancia pura: Solo contamos el dinero que REALMENTE ya nos pagaron (sin contar deudas)
             ingresos = sum((v.get("precio_total", 0) - v.get("deuda_restante", 0)) for v in lista_ventas)
             gastos = sum(v.get("gasto_envio", 0) for v in lista_ventas)
             return ingresos, gastos, ingresos - gastos
@@ -646,10 +653,10 @@ elif vista_admin == "📋 Ver Apartados":
                 
                 total_cliente += precio_item
                 total_anticipo += item.get("anticipo", 0.0)
+                # --- AQUÍ APLICAN LOS 4 DÍAS DE LÍMITE ---
                 fechas_venc.append(item.get("fecha_vencimiento", hora_qro()))
                 nombres_items.append(nombre_final) 
                 
-                # --- BOTONCITO QUIRÚRGICO Y DE VISUALIZACIÓN ---
                 c_txt, c_ver, c_del = st.columns([8, 1, 1])
                 c_txt.markdown(f"- **{item['nombre_producto']}** <span style='color:#f39c12;'>{info_extra}</span> <span style='font-size: 0.8em; color:#a5b1c2;'>{variante}</span> (${precio_item:,.2f}) _[Apt: {fecha_str}]_", unsafe_allow_html=True)
                 
@@ -712,7 +719,7 @@ elif vista_admin == "📋 Ver Apartados":
                         st.rerun()
                         
             with col_pro:
-                with st.expander("⏳ Prórroga"):
+                with st.expander("⏳ Prórroga / Abono"):
                     nuevo_anticipo = st.number_input("Abonar $", min_value=0.0, step=50.0, key=f"ant_{tel}")
                     dias_pro = st.number_input("Días Extra", min_value=0, step=1, value=1, key=f"dias_{tel}")
                     if st.button("Aplicar", key=f"btn_pro_{tel}"):
@@ -738,7 +745,7 @@ elif vista_admin == "📋 Ver Apartados":
 
             with col_notif:
                 with st.expander("📱 Notificar"):
-                    texto_bienvenida = f"¡Hola {nombre_cliente}! 👋 Te hablamos de Baku-Market. 🔥 Vimos que acabas de realizar tu apartado de {len(items)} piezas por un total de ${total_cliente:,.2f}. Te escribimos por aquí para confirmar tu pedido y pasarte los datos para el depósito. ¡Gracias por tu confianza! 🐉"
+                    texto_bienvenida = f"¡Hola {nombre_cliente}! 👋 Te hablamos de Baku-Market. 🔥 Vimos que acabas de realizar tu apartado de {len(items)} piezas por un total de ${total_cliente:,.2f}. Te escribimos por aquí para confirmar tu pedido y pasarte los datos para el depósito del anticipo. ¡Gracias por tu confianza! 🐉"
                     texto_expiracion = f"Hola {nombre_cliente}, te escribo de Baku-Market. Te recuerdo que tu apartado de {len(items)} piezas (Restante: ${restante:,.2f}) vence el {fecha_max_venc}. ¿Gusta que revisemos un abono/prórroga o procesamos tu envío?"
                     texto_cancelacion = f"Hola {nombre_cliente}. Te notificamos que el tiempo de tu apartado concluyó en Baku-Market y tu pedido de {len(items)} piezas ha sido cancelado, liberando el stock. ¡Gracias por tu comprensión!"
                     
@@ -887,10 +894,11 @@ else:
                                     item_bd_id = ObjectId(item_bd["_id"])
                                     db_prod = col_productos.find_one({"_id": item_bd_id})
                                     campo_stock = "stock_detalle" if item_bd.get("variante") == "detalle" and "stock_detalle" in db_prod else "stock"
+                                    # --- EL APARTADO SE REGISTRA CON 4 DÍAS EXACTOS ---
                                     col_apartados.insert_one({
                                         "producto_id": item_bd_id, "nombre_producto": item_bd["nombre"],
                                         "precio": ip["precio_final"], "comprador_nombre": nom, "comprador_telefono": tel,
-                                        "fecha_apartado": hora_qro(), "fecha_vencimiento": hora_qro() + timedelta(days=3), "campo_stock": campo_stock, "anticipo": 0.0
+                                        "fecha_apartado": hora_qro(), "fecha_vencimiento": hora_qro() + timedelta(days=4), "campo_stock": campo_stock, "anticipo": 0.0
                                     })
                                     col_productos.update_one({"_id": item_bd_id}, {"$inc": {campo_stock: -1}})
                                 
