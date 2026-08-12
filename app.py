@@ -334,8 +334,7 @@ st.sidebar.header("Filtros Avanzados")
 def reset_limite():
     st.session_state.limite_items = 12
 
-# --- SECCIÓN DE FUSIONES AGREGADA ---
-tipo_busqueda = st.sidebar.selectbox("¿Qué buscas?", ["Todo el Catálogo 🌍", "Bakugans 🔥", "Fusiones 🧬", "Trampas 🪤", "Cartas 🃏", "BakuCores 🛑", "Vehículos 🏎️", "Armamentos ⚔️", "BakuTech 🦾", "Extras 🎁", "Sets de Batalla 🏟️", "Deka 🌐", "Piezas / Detalles 🛠️"], on_change=reset_limite)
+tipo_busqueda = st.sidebar.selectbox("¿Qué buscas?", ["Todo el Catálogo 🌍", "Bakugans 🔥", "Trampas 🪤", "Cartas 🃏", "BakuCores 🛑", "Vehículos 🏎️", "Armamentos ⚔️", "BakuTech 🦾", "Extras 🎁", "Sets de Batalla 🏟️", "Deka 🌐", "Piezas / Detalles 🛠️"], on_change=reset_limite)
 tipos_con_atributo_ui = ["Bakugans 🔥", "Trampas 🪤", "Vehículos 🏎️", "Armamentos ⚔️", "BakuTech 🦾", "Sets de Batalla 🏟️", "Deka 🌐"]
 
 if tipo_busqueda in tipos_con_atributo_ui: sub_filtro = st.sidebar.selectbox("Filtra por Atributo", categorias, on_change=reset_limite)
@@ -483,7 +482,6 @@ elif vista_admin == "📊 Finanzas y Ventas":
         st.info("Aún no tienes ventas registradas para analizar.")
     else:
         def calcular_metricas(lista_ventas):
-            # Ganancia pura: Solo contamos el dinero que REALMENTE ya nos pagaron (sin contar deudas)
             ingresos = sum((v.get("precio_total", 0) - v.get("deuda_restante", 0)) for v in lista_ventas)
             gastos = sum(v.get("gasto_envio", 0) for v in lista_ventas)
             return ingresos, gastos, ingresos - gastos
@@ -554,11 +552,12 @@ elif vista_admin == "➕ Agregar Producto":
     tipo_prod = st.selectbox("Tipo de Producto", tipos_producto)
     nombre = st.text_input("Nombre / Descripción principal")
     
-    col1, col2, col3, col4 = st.columns(4)
+    col1, col2, col3 = st.columns(3)
     with col1: atributo_form = st.selectbox("Atributo", categorias[1:], disabled=(tipo_prod not in tipos_con_atributo)) 
-    with col2: atributo_2_form = st.selectbox("Atributo 2 (Fusión)", ["Ninguno"] + categorias[1:], disabled=(tipo_prod not in tipos_con_atributo))
-    with col3: material_form = st.selectbox("Material", materiales[1:], disabled=(tipo_prod != "Carta"))
-    with col4: simbolo_form = st.selectbox("Símbolo", simbolos_core[1:], disabled=(tipo_prod != "BakuCore"))
+    with col2: material_form = st.selectbox("Material", materiales[1:], disabled=(tipo_prod != "Carta"))
+    with col3: simbolo_form = st.selectbox("Símbolo", simbolos_core[1:], disabled=(tipo_prod != "BakuCore"))
+    
+    es_fusion = st.checkbox("🧬 Activar versión Fusión (Múltiples elementos)", disabled=(tipo_prod not in tipos_con_atributo))
     
     st.markdown("### 🟢 Piezas Normales (Perfectas)")
     c_pn, c_sn = st.columns(2)
@@ -592,8 +591,7 @@ elif vista_admin == "➕ Agregar Producto":
             }
             if tipo_prod in tipos_con_atributo: 
                 nuevo_prod["atributo"] = atributo_form
-                if atributo_2_form != "Ninguno":
-                    nuevo_prod["atributo_2"] = atributo_2_form
+                nuevo_prod["es_fusion"] = es_fusion
                     
             elif tipo_prod == "Carta": nuevo_prod["material"] = material_form
             elif tipo_prod == "BakuCore": nuevo_prod["simbolo"] = simbolo_form
@@ -638,9 +636,8 @@ elif vista_admin == "📋 Ver Apartados":
                 if prod_bd:
                     tipo_prod = prod_bd.get("tipo", "Bakugan")
                     if "atributo" in prod_bd and tipo_prod in tipos_con_atributo:
-                        attr2 = prod_bd.get("atributo_2", "Ninguno")
-                        if attr2 != "Ninguno":
-                            info_extra = f" | {prod_bd['atributo']} / {attr2}"
+                        if prod_bd.get("es_fusion", False):
+                            info_extra = f" | {prod_bd['atributo']} 🧬"
                         else:
                             info_extra = f" | {prod_bd['atributo']}"
                     elif "material" in prod_bd and tipo_prod == "Carta":
@@ -653,7 +650,6 @@ elif vista_admin == "📋 Ver Apartados":
                 
                 total_cliente += precio_item
                 total_anticipo += item.get("anticipo", 0.0)
-                # --- AQUÍ APLICAN LOS 4 DÍAS DE LÍMITE ---
                 fechas_venc.append(item.get("fecha_vencimiento", hora_qro()))
                 nombres_items.append(nombre_final) 
                 
@@ -719,7 +715,7 @@ elif vista_admin == "📋 Ver Apartados":
                         st.rerun()
                         
             with col_pro:
-                with st.expander("⏳ Prórroga / Abono"):
+                with st.expander("⏳ Prórroga"):
                     nuevo_anticipo = st.number_input("Abonar $", min_value=0.0, step=50.0, key=f"ant_{tel}")
                     dias_pro = st.number_input("Días Extra", min_value=0, step=1, value=1, key=f"dias_{tel}")
                     if st.button("Aplicar", key=f"btn_pro_{tel}"):
@@ -894,7 +890,6 @@ else:
                                     item_bd_id = ObjectId(item_bd["_id"])
                                     db_prod = col_productos.find_one({"_id": item_bd_id})
                                     campo_stock = "stock_detalle" if item_bd.get("variante") == "detalle" and "stock_detalle" in db_prod else "stock"
-                                    # --- EL APARTADO SE REGISTRA CON 4 DÍAS EXACTOS ---
                                     col_apartados.insert_one({
                                         "producto_id": item_bd_id, "nombre_producto": item_bd["nombre"],
                                         "precio": ip["precio_final"], "comprador_nombre": nom, "comprador_telefono": tel,
@@ -956,8 +951,6 @@ else:
 
         if tipo_busqueda in tipos_con_atributo_ui:
             if tipo_busqueda == "Bakugans 🔥" and tipo_p != "Bakugan" and "tipo" in prod: incluir = False
-            elif tipo_busqueda == "Fusiones 🧬":
-                if prod.get("atributo_2", "Ninguno") == "Ninguno": incluir = False
             elif tipo_busqueda == "Trampas 🪤" and tipo_p != "Trampa": incluir = False
             elif tipo_busqueda == "Vehículos 🏎️" and tipo_p != "Vehículo": incluir = False
             elif tipo_busqueda == "Armamentos ⚔️" and tipo_p != "Armamento": incluir = False
@@ -966,7 +959,7 @@ else:
             elif tipo_busqueda == "Deka 🌐" and tipo_p != "Deka": incluir = False
             
             if incluir and sub_filtro != "Todos":
-                if prod.get("atributo", "") != sub_filtro and prod.get("atributo_2", "Ninguno") != sub_filtro:
+                if prod.get("atributo", "") != sub_filtro:
                     incluir = False
                     
         elif tipo_busqueda == "Cartas 🃏":
@@ -1062,9 +1055,9 @@ else:
                 tipo_real = prod.get("tipo", "Bakugan")
                 if tipo_real == "Bakugan" or "atributo" in prod: 
                     attr1 = prod.get('atributo', 'N/A')
-                    attr2 = prod.get('atributo_2', 'Ninguno')
-                    if attr2 != "Ninguno":
-                        st.markdown(f"<div style='margin-top: 5px; margin-bottom: -10px;'><b>Atributos:</b> {attr1} / {attr2}</div>", unsafe_allow_html=True)
+                    es_fusion_val = prod.get('es_fusion', False)
+                    if es_fusion_val:
+                        st.markdown(f"<div style='margin-top: 5px; margin-bottom: -10px;'><b>Atributo:</b> {attr1} 🧬 (Fusión)</div>", unsafe_allow_html=True)
                     else:
                         st.markdown(f"<div style='margin-top: 5px; margin-bottom: -10px;'><b>Atributo:</b> {attr1}</div>", unsafe_allow_html=True)
                         
@@ -1124,16 +1117,13 @@ else:
                             idx_attr = categorias[1:].index(attr_actual)
                         except ValueError:
                             idx_attr = 0
-                            
-                        attr2_actual = prod.get('atributo_2', "Ninguno") 
-                        try:
-                            idx_attr2 = (["Ninguno"] + categorias[1:]).index(attr2_actual)
-                        except ValueError:
-                            idx_attr2 = 0
 
-                        c_a1, c_a2 = st.columns(2)
-                        with c_a1: nuevo_atributo = st.selectbox("Atributo", categorias[1:], index=idx_attr, key=f"eattr_{prod['_id']}")
-                        with c_a2: nuevo_atributo_2 = st.selectbox("Atributo 2 (Fusión)", ["Ninguno"] + categorias[1:], index=idx_attr2, key=f"eattr2_{prod['_id']}")
+                        nuevo_atributo = st.selectbox("Atributo", categorias[1:], index=idx_attr, key=f"eattr_{prod['_id']}")
+                        
+                        if nuevo_tipo in tipos_con_atributo:
+                            nuevo_es_fusion = st.checkbox("🧬 Es Fusión", value=prod.get('es_fusion', False), key=f"efusion_{prod['_id']}")
+                        else:
+                            nuevo_es_fusion = False
 
                         np = st.number_input("Precio N.", value=float(precio_normal), step=10.0, key=f"epn_{prod['_id']}")
                         ns = st.number_input("Stock N.", value=int(stock_normal), step=1, key=f"esn_{prod['_id']}")
@@ -1148,10 +1138,7 @@ else:
                             
                             if nuevo_tipo in tipos_con_atributo:
                                 update_data["atributo"] = nuevo_atributo
-                                if nuevo_atributo_2 != "Ninguno":
-                                    update_data["atributo_2"] = nuevo_atributo_2
-                                else:
-                                    update_data["atributo_2"] = "Ninguno"
+                                update_data["es_fusion"] = nuevo_es_fusion
                                     
                             col_productos.update_one({"_id": ObjectId(prod["_id"])}, {"$set": update_data})
                             forzar_actualizacion()
