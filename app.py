@@ -140,8 +140,12 @@ def comprimir_imagen(img_file):
     img.save(buffer, format="JPEG", quality=70)
     return base64.b64encode(buffer.getvalue()).decode("utf-8")
 
+# --- LEEMOS SI ES EL JEFE DESDE EL INICIO PARA QUE NO LO BLOQUEE ---
+es_admin_url = st.query_params.get("jefe") == "1"
+
 # ---------------- PANTALLA DE BLOQUEO (REGLAS OBLIGATORIAS) ----------------
-if not st.session_state.welcome_shown:
+# Se salta esta pantalla si es el admin
+if not st.session_state.welcome_shown and not es_admin_url:
     st.markdown("<h1 style='text-align:center;'>🚨 ¡Detente ahí, Bakubanda! 🚨</h1>", unsafe_allow_html=True)
     st.info("""
     ### 📖 ¿Cómo apartar tus piezas en Baku-Market?
@@ -193,7 +197,6 @@ def abrir_referencias():
     if st.button("Cerrar Ventana", use_container_width=True):
         st.rerun()
 
-# --- NUEVO MODAL GIGANTE DE WHATSAPP (CON LINK UNIVERSAL) ---
 @st.dialog("✅ ¡Apartado Exitoso!")
 def modal_whatsapp(enlace):
     st.success("Tus piezas ya están bloqueadas y apartadas en el sistema.")
@@ -358,7 +361,6 @@ elif tipo_busqueda == "Cartas 🃏": sub_filtro = st.sidebar.selectbox("Filtra p
 elif tipo_busqueda == "BakuCores 🛑": sub_filtro = st.sidebar.selectbox("Filtra por Símbolo", simbolos_core, on_change=reset_limite)
 else: sub_filtro = "Todos"
 
-es_admin_url = st.query_params.get("jefe") == "1"
 vista_admin = "Catálogo" 
 
 if es_admin_url:
