@@ -243,7 +243,7 @@ def modal_regalo_3x2():
     else:
         for reg in regalos:
             c1, c2 = st.columns([3, 1])
-            c1.markdown(f"<span style='font-size:15px;'><b>{reg['nombre']}</b></span><br><span style='color:#2ecc71; font-weight:bold;'>${reg['precio']:,.2f}</span>", unsafe_allow_html=True)
+            c1.markdown(f"<span style='font-size:14px;'><b>{reg['nombre']}</b></span><br><span style='color:#2ecc71; font-weight:bold;'>${reg['precio']:,.2f}</span>", unsafe_allow_html=True)
             if c2.button("🎁 Elegir", key=f"btn_regalo_{str(reg['_id'])}", use_container_width=True):
                 st.session_state.carrito.append({
                     "_id": str(reg["_id"]), "nombre": reg["nombre"],
@@ -879,7 +879,7 @@ else:
                     item = ip["item"]
                     texto_precio = f"~~${item['precio']}~~ **${ip['precio_final']:,.2f}**" if ip["precio_final"] < item['precio'] else f"**${ip['precio_final']:,.2f}**"
                     if ip["precio_final"] == 0.0: texto_precio = f"~~${item['precio']}~~ **¡GRATIS!**"
-                    c1.markdown(f"<span style='font-size:0.9em;'>{item['nombre']} - {texto_precio}</span>", unsafe_allow_html=True)
+                    c1.markdown(f"<span style='font-size:0.85em;'>{item['nombre']} - {texto_precio}</span>", unsafe_allow_html=True)
                     if c2.button("❌", key=f"del_cart_{i}_{item['_id']}"):
                         st.session_state.carrito.pop(i)
                         guardar_carrito() 
@@ -946,7 +946,7 @@ else:
             else: st.info("Carrito vacío.")
 
     banner_frases = []
-    if config_promos.get("promo_3x2", False): banner_frases.append("🌟 <b>¡SÚPER 3x2! Llevas 3, Pagas 2 (Regalo hasta $180)</b>")
+    if config_promos.get("promo_3x2", False): banner_frases.append("🌟 <b>¡SÚPER 3x2! Llevas 3, Pagas 2</b>")
     for p in config_promos.get("volumen", []):
         if p["activa"]: banner_frases.append(f"📦 <b>{p['min_piezas']}+ {p['categoria']}s a ${p['precio_fijo']:,.2f} c/u</b>")
     for p in config_promos.get("monto", []):
@@ -957,7 +957,7 @@ else:
             
     if banner_frases:
         st.markdown(f"""
-        <div style="background: linear-gradient(90deg, #ff416c, #ff4b2b); padding: 12px; border-radius: 8px; text-align: center; color: white; font-size: 15px; margin-bottom: 20px;">
+        <div style="background: linear-gradient(90deg, #ff416c, #ff4b2b); padding: 10px; border-radius: 8px; text-align: center; color: white; font-size: 13px; margin-bottom: 20px;">
             ✨ <b>¡PROMOS ACTIVAS!</b> ✨ <br class="mobile-break"> {" &nbsp;|&nbsp; ".join(banner_frases)}
         </div>
         <style>@media (min-width: 768px) {{ .mobile-break {{ display: none; }} }}</style>
