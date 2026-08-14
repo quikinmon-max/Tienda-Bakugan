@@ -805,7 +805,7 @@ else:
         # --- MENÚ DE SELECCIÓN DE PROMOS (MUTUAMENTE EXCLUSIVAS) ---
         texto_default = "Ninguna / Solo Envío Gratis" if config_promos.get("envio_gratis", {}).get("activa", False) else "Ninguna"
         opciones_promo = [texto_default]
-        if config_promos.get("promo_3x2", False): opciones_promo.append("🌟 Súper 3x2 (Regalo hasta $180)")
+        if config_promos.get("promo_3x2", False): opciones_promo.append("🌟 Súper 3x2")
         if config_promos.get("volumen", []) and any(p["activa"] for p in config_promos["volumen"]): opciones_promo.append("📦 Precio por Volumen")
         if config_promos.get("monto", []) and any(p["activa"] for p in config_promos["monto"]): opciones_promo.append("🤑 Descuento por Monto")
 
@@ -823,7 +823,7 @@ else:
         st.markdown("---")
 
         # ---------------- EVALUAR PROMOS Y BANNER 3x2 INTERACTIVO ----------------
-        if promo_seleccionada == "🌟 Súper 3x2 (Regalo hasta $180)":
+        if promo_seleccionada == "🌟 Súper 3x2":
             elegibles_3x2 = [i for i in st.session_state.carrito if i.get("tipo") not in ["Carta", "BakuCore", "Extra"] and i.get("variante") != "detalle"]
             if len(elegibles_3x2) > 0 and len(elegibles_3x2) % 3 == 2:
                 if st.session_state.get("abrir_modal_3x2", False): modal_regalo_3x2()
@@ -863,7 +863,7 @@ else:
                         ip["precio_efec"] = promos_volumen_aplicables[t]
                         ip["es_promo_vol"] = True
                     
-            if promo_seleccionada == "🌟 Súper 3x2 (Regalo hasta $180)":
+            if promo_seleccionada == "🌟 Súper 3x2":
                 elegibles_todas = [ip for ip in items_procesados if ip["item"].get("tipo", "Bakugan") not in ["Carta", "BakuCore", "Extra"] and ip["item"].get("variante", "normal") != "detalle"]
                 max_regalos = len(elegibles_todas) // 3
                 
@@ -1083,8 +1083,8 @@ else:
             info_img = obtener_foto_mongo(str(prod["_id"]))
             
             with cols[index % 3]:
-                # --- LETRA MÁS PEQUEÑA PARA LOS NOMBRES ---
-                st.markdown(f"<h4 style='margin-bottom: 5px; margin-top: 0px; font-size: 18px;'>{prod['nombre']}</h4>", unsafe_allow_html=True)
+                # --- TAMAÑO AJUSTADO PARA LOS NOMBRES ---
+                st.markdown(f"<h4 style='margin-bottom: 5px; margin-top: 0px; font-size: 20px;'>{prod['nombre']}</h4>", unsafe_allow_html=True)
                 
                 if tipo_busqueda == "Piezas / Detalles 🛠️":
                     imagenes_del_producto = info_img.get("imagenes_detalle_b64", info_img.get("imagenes_b64", []))
@@ -1142,7 +1142,7 @@ else:
                                     st.session_state.carrito.append({"_id": prod["_id"], "nombre": f"{prod['nombre']}", "precio": precio_normal, "variante": "normal", "tipo": tipo_real})
                                     guardar_carrito() 
                                     
-                                    if promo_seleccionada == "🌟 Súper 3x2 (Regalo hasta $180)" and tipo_real not in ["Carta", "BakuCore", "Extra"]:
+                                    if promo_seleccionada == "🌟 Súper 3x2" and tipo_real not in ["Carta", "BakuCore", "Extra"]:
                                         eleg = [i for i in st.session_state.carrito if i.get("tipo") not in ["Carta", "BakuCore", "Extra"] and i.get("variante") != "detalle"]
                                         if len(eleg) % 3 == 2: st.session_state.abrir_modal_3x2 = True
                                             
