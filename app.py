@@ -228,22 +228,39 @@ def abrir_zoom(nombre_prod, imagenes_b64):
     if len(imagenes_b64) > 1:
         st.markdown("<p style='text-align: center; color: #aaa; font-size: 14px; margin-top: 10px;'>👉 Desliza para ver más</p>", unsafe_allow_html=True)
 
+# --- MODAL REGALOS 3X2 LIMPIO SIN PRECIOS Y CON EMOJIS ---
 @st.dialog("🎁 Menú de Regalos (Promo 3x2)")
 def modal_regalo_3x2():
     precio_max = 180.0
-    st.markdown(f"¡Felicidades! Como llevas 2 piezas, tienes derecho a elegir una tercera completamente **GRATIS** (De nuestro catálogo de **${precio_max:,.2f}** o menos).")
+    st.markdown(f"¡Felicidades! Como llevas 2 piezas, tienes derecho a elegir una tercera completamente **GRATIS**.")
     st.info("👇 Estas son las piezas que aplican para tu regalo. ¡Elige rápido antes de que te la ganen!")
     
+    tipos_con_atributo = ["Bakugan", "Trampa", "Vehículo", "Armamento", "BakuTech", "Set de Batalla", "Deka"]
     catalogo_ram = cargar_catalogo_textos()
     regalos = [p for p in catalogo_ram if p.get("tipo", "Bakugan") not in ["Carta", "BakuCore", "Extra"] and p.get("stock", 0) > 0 and p.get("precio", 0) <= precio_max]
     regalos = sorted(regalos, key=lambda x: x["precio"], reverse=True)[:50]
     
     if not regalos:
-        st.warning("Uy, parece que en este momento no tenemos piezas disponibles de $180 o menos.")
+        st.warning("Uy, parece que en este momento no tenemos piezas disponibles.")
     else:
         for reg in regalos:
             c1, c2 = st.columns([3, 1])
-            c1.markdown(f"<span style='font-size:14px;'><b>{reg['nombre']}</b></span><br><span style='color:#2ecc71; font-weight:bold;'>${reg['precio']:,.2f}</span>", unsafe_allow_html=True)
+            
+            # Extraer solo los emojis
+            emojis = ""
+            if reg.get("tipo") in tipos_con_atributo and "atributo" in reg:
+                attr1 = reg["atributo"].split()[-1] if " " in reg["atributo"] else ""
+                attr2 = reg.get("atributo_2", "Ninguno")
+                attr2_emoji = attr2.split()[-1] if " " in attr2 and attr2 != "Ninguno" else ""
+                
+                if attr2_emoji:
+                    emojis = f"{attr1}/{attr2_emoji}🧬"
+                elif reg.get("es_fusion"):
+                    emojis = f"{attr1}🧬"
+                else:
+                    emojis = f"{attr1}"
+
+            c1.markdown(f"<div style='margin-top:8px;'><span style='font-size:16px;'><b>{reg['nombre']}</b> {emojis}</span></div>", unsafe_allow_html=True)
             if c2.button("🎁 Elegir", key=f"btn_regalo_{str(reg['_id'])}", use_container_width=True):
                 st.session_state.carrito.append({
                     "_id": str(reg["_id"]), "nombre": reg["nombre"],
@@ -879,7 +896,7 @@ else:
                     item = ip["item"]
                     texto_precio = f"~~${item['precio']}~~ **${ip['precio_final']:,.2f}**" if ip["precio_final"] < item['precio'] else f"**${ip['precio_final']:,.2f}**"
                     if ip["precio_final"] == 0.0: texto_precio = f"~~${item['precio']}~~ **¡GRATIS!**"
-                    c1.markdown(f"<span style='font-size:0.85em;'>{item['nombre']} - {texto_precio}</span>", unsafe_allow_html=True)
+                    c1.markdown(f"<span style='font-size:0.9em;'>{item['nombre']} - {texto_precio}</span>", unsafe_allow_html=True)
                     if c2.button("❌", key=f"del_cart_{i}_{item['_id']}"):
                         st.session_state.carrito.pop(i)
                         guardar_carrito() 
@@ -957,7 +974,7 @@ else:
             
     if banner_frases:
         st.markdown(f"""
-        <div style="background: linear-gradient(90deg, #ff416c, #ff4b2b); padding: 10px; border-radius: 8px; text-align: center; color: white; font-size: 13px; margin-bottom: 20px;">
+        <div style="background: linear-gradient(90deg, #ff416c, #ff4b2b); padding: 12px; border-radius: 8px; text-align: center; color: white; font-size: 15px; margin-bottom: 20px;">
             ✨ <b>¡PROMOS ACTIVAS!</b> ✨ <br class="mobile-break"> {" &nbsp;|&nbsp; ".join(banner_frases)}
         </div>
         <style>@media (min-width: 768px) {{ .mobile-break {{ display: none; }} }}</style>
@@ -1043,7 +1060,8 @@ else:
             info_img = obtener_foto_mongo(str(prod["_id"]))
             
             with cols[index % 3]:
-                st.markdown(f"### {prod['nombre']}")
+                # --- AQUÍ APLICAMOS LA LETRA MÁS PEQUEÑA A LOS NOMBRES ---
+                st.markdown(f"<h4 style='margin-bottom: 5px; margin-top: 0px;'>{prod['nombre']}</h4>", unsafe_allow_html=True)
                 
                 if tipo_busqueda == "Piezas / Detalles 🛠️":
                     imagenes_del_producto = info_img.get("imagenes_detalle_b64", info_img.get("imagenes_b64", []))
