@@ -143,8 +143,7 @@ def comprimir_imagen(img_file):
 # --- LEEMOS SI ES EL JEFE DESDE EL INICIO PARA QUE NO LO BLOQUEE ---
 es_admin_url = st.query_params.get("jefe") == "1"
 
-# ---------------- PANTALLA DE BLOQUEO (REGLAS OBLIGATORIAS) ----------------
-# Se salta esta pantalla si es el admin
+# ---------------- PANTALLA DE BLOQUEO CON CHECKBOX OBLIGATORIO ----------------
 if not st.session_state.welcome_shown and not es_admin_url:
     st.markdown("<h1 style='text-align:center;'>🚨 ¡Detente ahí, Bakubanda! 🚨</h1>", unsafe_allow_html=True)
     st.info("""
@@ -158,12 +157,19 @@ if not st.session_state.welcome_shown and not es_admin_url:
     ---
     ### ⏱️ REGLAS DE APARTADO (¡Obligatorio leer!)
     * Para que tu apartado sea válido, debes dar un **anticipo del 10% del total**. Si no hay anticipo, las piezas se liberan para otros.
-    * Una vez dado tu anticipo, cuentas con **4 días exactos** para liquidar tu pedido.
+    * Una vez dado tu anticipo, cuentas con **4 días exactos (o la fecha establecida en tu ticket)** para liquidar tu pedido.
     * 🚨 **OJO:** En caso de dar el 10% y no liquidar en el tiempo establecido, **se pierden las piezas y el dinero del anticipo**. ¡Evita penalizaciones!
     """)
-    if st.button("✅ ¡ENTENDIDO, QUIERO VER EL CATÁLOGO! 🔥", use_container_width=True, type="primary"):
-        st.session_state.welcome_shown = True
-        st.rerun()
+    
+    acepto_reglas = st.checkbox("✅ Declaro que he leído y acepto las reglas de apartado y los tiempos límite.")
+    
+    if acepto_reglas:
+        if st.button("🚀 ¡ENTENDIDO, QUIERO VER EL CATÁLOGO! 🔥", use_container_width=True, type="primary"):
+            st.session_state.welcome_shown = True
+            st.rerun()
+    else:
+        st.button("🚀 ¡ENTENDIDO, QUIERO VER EL CATÁLOGO! 🔥", use_container_width=True, type="primary", disabled=True)
+        
     st.stop()
 
 # ---------------- MODALES Y DIÁLOGOS ----------------
@@ -176,8 +182,8 @@ def abrir_tutorial():
     
     ### ⏱️ REGLAS DE APARTADO
     * Obligatorio **anticipo del 10%**.
-    * Cuentas con **4 días exactos** para liquidar.
-    * 🚨 **Penalización:** Si no liquidas en 4 días, **se pierden las piezas y el anticipo**.
+    * Cuentas con **4 días exactos (o fecha establecida)** para liquidar.
+    * 🚨 **Penalización:** Si no liquidas en tiempo y forma, **se pierden las piezas y el anticipo**.
     """)
     if st.button("Cerrar", use_container_width=True):
         st.rerun()
@@ -191,7 +197,7 @@ def abrir_referencias():
         st.markdown("¡Gracias a todos por su confianza! Aquí te dejo algunas de nuestras entregas exitosas:")
         html_refs = '<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px;">'
         for r in refs:
-            html_refs += f'<img src="data:image/jpeg;base64,{r}" style="width: 100%; border-radius: 8px; object-fit: cover;">'
+            html_refs += f'<img src="data:image/jpeg;base64,{r}" style="width: 100%; border-radius: 8px; object-fit: cover; pointer-events: none;">'
         html_refs += '</div>'
         st.markdown(html_refs, unsafe_allow_html=True)
     if st.button("Cerrar Ventana", use_container_width=True):
@@ -203,13 +209,8 @@ def modal_whatsapp(enlace):
     st.markdown("### 🚨 ¡Falta un último paso!")
     st.markdown("Para procesar tu pedido, es obligatorio enviarnos el mensaje de confirmación automático:")
     
-    st.markdown(f"""
-    <div style="text-align: center; margin: 25px 0px;">
-        <a href="{enlace}" target="_blank" style="background-color: #25D366; color: white; padding: 15px 25px; text-decoration: none; border-radius: 10px; font-weight: bold; font-size: 18px; display: inline-block; box-shadow: 0px 4px 6px rgba(0,0,0,0.3);">
-            📲 ENVIAR WHATSAPP AHORA
-        </a>
-    </div>
-    """, unsafe_allow_html=True)
+    # --- BOTÓN NATIVO DE STREAMLIT PARA WHATSAPP ---
+    st.link_button("📲 ENVIAR WHATSAPP AHORA", enlace, type="primary", use_container_width=True)
     
     st.warning("OJO: Recuerda que necesitas depositar el 10% de anticipo para que tu apartado sea válido. De lo contrario, podríamos llegar a cancelar tu pedido.")
     st.markdown("---")
@@ -228,7 +229,6 @@ def abrir_zoom(nombre_prod, imagenes_b64):
     if len(imagenes_b64) > 1:
         st.markdown("<p style='text-align: center; color: #aaa; font-size: 14px; margin-top: 10px;'>👉 Desliza para ver más</p>", unsafe_allow_html=True)
 
-# --- MODAL REGALOS 3X2 LIMPIO SIN PRECIOS Y CON EMOJIS ---
 @st.dialog("🎁 Menú de Regalos (Promo 3x2)")
 def modal_regalo_3x2():
     precio_max = 180.0
@@ -238,15 +238,22 @@ def modal_regalo_3x2():
     tipos_con_atributo = ["Bakugan", "Trampa", "Vehículo", "Armamento", "BakuTech", "Set de Batalla", "Deka"]
     catalogo_ram = cargar_catalogo_textos()
     regalos = [p for p in catalogo_ram if p.get("tipo", "Bakugan") not in ["Carta", "BakuCore", "Extra"] and p.get("stock", 0) > 0 and p.get("precio", 0) <= precio_max]
-    regalos = sorted(regalos, key=lambda x: x["precio"], reverse=True)[:50]
     
-    if not regalos:
+    regalos_filtrados = []
+    for r in regalos:
+        f_lanz = r.get("fecha_lanzamiento")
+        if isinstance(f_lanz, datetime) and f_lanz > hora_qro():
+            continue
+        regalos_filtrados.append(r)
+        
+    regalos_filtrados = sorted(regalos_filtrados, key=lambda x: x["precio"], reverse=True)[:50]
+    
+    if not regalos_filtrados:
         st.warning("Uy, parece que en este momento no tenemos piezas disponibles.")
     else:
-        for reg in regalos:
+        for reg in regalos_filtrados:
             c1, c2 = st.columns([3, 1])
             
-            # Extraer solo los emojis
             emojis = ""
             if reg.get("tipo") in tipos_con_atributo and "atributo" in reg:
                 attr1 = reg["atributo"].split()[-1] if " " in reg["atributo"] else ""
@@ -293,9 +300,16 @@ def ejecutar_mantenimiento(trigger):
 
 ejecutar_mantenimiento(datetime.utcnow().strftime("%Y-%m-%d %H"))
 
-# --- CSS EXTERMINADOR DEFINITIVO + AJUSTES COMPACTOS ---
+# --- CSS EXTERMINADOR DEFINITIVO + AJUSTES COMPACTOS + BLINDAJE DE IMÁGENES ---
 css_global = f"""
 <style>
+/* --- BLINDAJE ANTI-COPIA Y ANTI-DESCARGA --- */
+img {{
+    -webkit-user-drag: none !important;
+    -webkit-touch-callout: none !important;
+    pointer-events: none !important;
+}}
+
 header[data-testid="stHeader"] {{ background: transparent !important; box-shadow: none !important; visibility: visible !important; }}
 [data-testid="collapsedControl"] {{ display: flex !important; visibility: visible !important; }}
 .stDeployButton {{ display: none !important; }}
@@ -395,8 +409,7 @@ if es_admin_url:
         if st.sidebar.button("🚪 Cerrar Sesión"):
             st.session_state.admin_autenticado = False
             st.rerun()
-        # --- AQUÍ ESTÁ LA NUEVA PESTAÑA "Agotados" ---
-        vista_admin = st.sidebar.radio("Opciones de Administrador", ["Ver Catálogo", "❌ Agotados (Stock 0)", "➕ Agregar Producto", "📋 Ver Apartados", "📊 Finanzas y Ventas", "🎨 Personalizar Página", "🎁 Gestor de Promociones", "⭐ Gestor de Referencias"])
+        vista_admin = st.sidebar.radio("Opciones de Administrador", ["Ver Catálogo", "❌ Agotados (Stock 0)", "⏳ Programados", "➕ Agregar Producto", "📋 Ver Apartados", "📊 Finanzas y Ventas", "🎨 Personalizar Página", "🎁 Gestor de Promociones", "⭐ Gestor de Referencias"])
 
 st.sidebar.markdown("<div style='height: 400px;'></div>", unsafe_allow_html=True)
 
@@ -611,6 +624,15 @@ elif vista_admin == "➕ Agregar Producto":
         imagenes_detalle_subidas = st.file_uploader("📸 Sube fotos SOLO mostrando el DETALLE", type=["png", "jpg", "jpeg"], accept_multiple_files=True)
     else:
         precio_detalle, stock_detalle, detalle_prod = 0.0, 0, ""
+        
+    st.markdown("### ⏳ Lanzamiento (Opcional)")
+    con_lanzamiento = st.checkbox("Programar fecha y hora de publicación (Para drops automáticos)")
+    fecha_final_prog = None
+    if con_lanzamiento:
+        c_lan1, c_lan2 = st.columns(2)
+        fecha_lanz = c_lan1.date_input("Fecha de salida", min_value=hora_qro().date())
+        hora_lanz = c_lan2.time_input("Hora exacta (Hora Centro)")
+        fecha_final_prog = datetime.combine(fecha_lanz, hora_lanz)
     
     if st.button("Subir Producto al Catálogo"):
         if nombre and (imagenes_subidas or imagenes_detalle_subidas) and (precio > 0 or precio_detalle > 0):
@@ -621,7 +643,8 @@ elif vista_admin == "➕ Agregar Producto":
             nuevo_prod = {
                 "tipo": tipo_prod, "nombre": nombre, "precio": precio, "stock": stock,
                 "precio_detalle": precio_detalle, "stock_detalle": stock_detalle, "detalle": detalle_prod,
-                "imagenes_b64": lista_imagenes_b64, "imagenes_detalle_b64": lista_imagenes_detalle_b64
+                "imagenes_b64": lista_imagenes_b64, "imagenes_detalle_b64": lista_imagenes_detalle_b64,
+                "fecha_lanzamiento": fecha_final_prog
             }
             if tipo_prod in tipos_con_atributo: 
                 nuevo_prod["atributo"] = atributo_form
@@ -777,7 +800,7 @@ elif vista_admin == "📋 Ver Apartados":
 
             with col_notif:
                 with st.expander("📱 Notificar"):
-                    texto_bienvenida = f"¡Hola {nombre_cliente}! 👋 Te hablamos de Baku-Market. 🔥 Vimos que acabas de realizar tu apartado de {len(items)} piezas por un total de ${total_cliente:,.2f}. Te escribimos por aquí para confirmar tu pedido y pasarte los datos para el depósito del anticipo. ¡Gracias por tu confianza! 🐉"
+                    texto_bienvenida = f"¡Hola {nombre_cliente}! 👋 Te hablamos de Baku-Market. 🔥 Vimos que acabas de realizar tu apartado de {len(items)} piezas por un total de ${total_cliente:,.2f}. Te escribimos por aquí para confirmar tu pedido y pasarte los datos para el depósito del anticipo del 10%. ¡Gracias por tu confianza! 🐉"
                     texto_expiracion = f"Hola {nombre_cliente}, te escribo de Baku-Market. Te recuerdo que tu apartado de {len(items)} piezas (Restante: ${restante:,.2f}) vence el {fecha_max_venc}. ¿Gusta que revisemos un abono/prórroga o procesamos tu envío?"
                     texto_cancelacion = f"Hola {nombre_cliente}. Te notificamos que el tiempo de tu apartado concluyó en Baku-Market y tu pedido de {len(items)} piezas ha sido cancelado, liberando el stock. ¡Gracias por tu comprensión!"
                     
@@ -789,11 +812,18 @@ elif vista_admin == "📋 Ver Apartados":
 else:
     es_modo_admin_catalogo = st.session_state.admin_autenticado and vista_admin == "Ver Catálogo"
     es_modo_admin_agotados = st.session_state.admin_autenticado and vista_admin == "❌ Agotados (Stock 0)"
-    es_modo_edicion = es_modo_admin_catalogo or es_modo_admin_agotados
+    es_modo_admin_programados = st.session_state.admin_autenticado and vista_admin == "⏳ Programados"
+    es_modo_edicion = es_modo_admin_catalogo or es_modo_admin_agotados or es_modo_admin_programados
     catalogo_ram_entero = cargar_catalogo_textos()
     
     if es_modo_edicion:
-        st.title("🛠️ Administrar Catálogo e Inventario" if es_modo_admin_catalogo else "❌ Piezas Agotadas (Restock)")
+        if es_modo_admin_catalogo:
+            st.title("🛠️ Administrar Catálogo e Inventario")
+        elif es_modo_admin_agotados:
+            st.title("❌ Piezas Agotadas (Restock)")
+        elif es_modo_admin_programados:
+            st.title("⏳ Drops Programados")
+            
         total_publicaciones = len(catalogo_ram_entero)
         total_piezas_fisicas = sum(p.get("stock", 0) + p.get("stock_detalle", 0) for p in catalogo_ram_entero)
         valor_estimado_total = sum((p.get("stock", 0) * p.get("precio", 0.0)) + (p.get("stock_detalle", 0) * p.get("precio_detalle", 0.0)) for p in catalogo_ram_entero)
@@ -971,6 +1001,8 @@ else:
                                 
                                 if promo_envio.get("activa", False) and total_carrito >= promo_envio.get("monto_minimo", 2500.0):
                                     texto_crudo += f"\n\n🚚 *Nota extra: ¡Mi pedido califica para ENVÍO GRATIS!*"
+                                    
+                                texto_crudo += f"\n\n⏱️ *Nota: Estoy consciente de que cuento con 4 días exactos (o la fecha establecida) para liquidar mi pedido y no perder mi apartado ni el anticipo del 10%.*"
 
                                 st.session_state.wa_link = f"https://api.whatsapp.com/send?phone=524462879839&text={urllib.parse.quote(texto_crudo)}"
                                 
@@ -1044,6 +1076,15 @@ else:
             stock_detalle, stock_normal = stock_normal, 0
             
         es_agotado = (stock_normal == 0 and stock_detalle == 0)
+        
+        fecha_lanz = prod.get("fecha_lanzamiento")
+        es_futuro = isinstance(fecha_lanz, datetime) and fecha_lanz > hora_qro()
+
+        if es_modo_admin_programados:
+            if es_futuro: productos_filtrados.append(prod)
+            continue
+            
+        if es_futuro: continue # Si no es la pestaña de programados, escóndelo siempre
 
         if es_modo_admin_agotados:
             if es_agotado: productos_filtrados.append(prod)
@@ -1088,6 +1129,8 @@ else:
     if not productos_filtrados:
         if es_modo_admin_agotados:
             st.info("¡Felicidades jefe! No tienes ninguna pieza agotada en tu inventario.")
+        elif es_modo_admin_programados:
+            st.info("No hay drops programados a futuro.")
         else:
             st.info("No encontramos piezas en esta categoría.")
     else:
@@ -1097,7 +1140,7 @@ else:
             
             with cols[index % 3]:
                 # --- TAMAÑO DE LETRA DE LOS NOMBRES ---
-                st.markdown(f"<h4 style='margin-bottom: 5px; margin-top: 0px; font-size: 18px;'>{prod['nombre']}</h4>", unsafe_allow_html=True)
+                st.markdown(f"<h4 style='margin-bottom: 5px; margin-top: 0px; font-size: 20px;'>{prod['nombre']}</h4>", unsafe_allow_html=True)
                 
                 if tipo_busqueda == "Piezas / Detalles 🛠️":
                     imagenes_del_producto = info_img.get("imagenes_detalle_b64", info_img.get("imagenes_b64", []))
@@ -1121,6 +1164,12 @@ else:
                 stock_detalle = prod.get('stock_detalle', 0)
                 precio_detalle = prod.get('precio_detalle', 0.0)
                 texto_detalle = prod.get('detalle', "")
+                
+                f_lanz_prod = prod.get("fecha_lanzamiento")
+                es_futuro_prod = isinstance(f_lanz_prod, datetime) and f_lanz_prod > hora_qro()
+                
+                if es_futuro_prod and es_modo_admin_programados:
+                    st.info(f"⏳ Sale el: {f_lanz_prod.strftime('%d/%m/%Y a las %I:%M %p')}")
 
                 if texto_detalle and 'stock_detalle' not in prod:
                     stock_detalle, precio_detalle = stock_normal, precio_normal
@@ -1171,13 +1220,17 @@ else:
                                 st.session_state.carrito.append({"_id": prod["_id"], "nombre": f"{prod['nombre']} (Detalle)", "precio": precio_detalle, "variante": "detalle", "tipo": tipo_real})
                                 guardar_carrito() 
                                 st.rerun()
-                        else: 
-                            st.button("✅ En carrito", disabled=True, key=f"max_d_{prod['_id']}", use_container_width=True)
+                    else: 
+                        st.button("✅ En carrito", disabled=True, key=f"max_d_{prod['_id']}", use_container_width=True)
 
                 if es_modo_edicion:
                     st.markdown('<hr style="margin: 10px 0px; border: none; border-top: 1px solid rgba(255,255,255,0.2);">', unsafe_allow_html=True)
                     
-                    with st.expander("✏️ Editar" if es_modo_admin_catalogo else "✏️ Editar / Restock"):
+                    titulo_expander = "✏️ Editar"
+                    if es_modo_admin_agotados: titulo_expander = "✏️ Editar / Restock"
+                    elif es_modo_admin_programados: titulo_expander = "✏️ Editar Drop"
+                    
+                    with st.expander(titulo_expander):
                         nuevo_nombre = st.text_input("Nombre del Producto", value=prod['nombre'], key=f"enom_{prod['_id']}")
                         
                         idx_tipo = tipos_producto.index(tipo_real) if tipo_real in tipos_producto else 0
@@ -1205,9 +1258,20 @@ else:
                         nds = st.number_input("Stock D.", value=int(stock_detalle), step=1, key=f"esd_{prod['_id']}")
                         ndtxt = st.text_input("Detalle", value=texto_detalle, key=f"etxt_{prod['_id']}")
                         
+                        es_prog_ed = st.checkbox("⏳ Programar lanzamiento", value=es_futuro_prod, key=f"prog_{prod['_id']}")
+                        fecha_final_ed = None
+                        if es_prog_ed:
+                            f_val = f_lanz_prod.date() if es_futuro_prod else hora_qro().date()
+                            h_val = f_lanz_prod.time() if es_futuro_prod else hora_qro().time()
+                            c_f, c_h = st.columns(2)
+                            f_ed = c_f.date_input("Fecha", value=f_val, key=f"fed_{prod['_id']}")
+                            h_ed = c_h.time_input("Hora", value=h_val, key=f"hed_{prod['_id']}")
+                            fecha_final_ed = datetime.combine(f_ed, h_ed)
+                        
                         if st.button("💾 Guardar", key=f"save_{prod['_id']}", use_container_width=True):
                             update_data = {
-                                "nombre": nuevo_nombre, "tipo": nuevo_tipo, "precio": np, "stock": ns, "precio_detalle": ndp, "stock_detalle": nds, "detalle": ndtxt
+                                "nombre": nuevo_nombre, "tipo": nuevo_tipo, "precio": np, "stock": ns, "precio_detalle": ndp, "stock_detalle": nds, "detalle": ndtxt,
+                                "fecha_lanzamiento": fecha_final_ed
                             }
                             
                             if nuevo_tipo in tipos_con_atributo:
