@@ -242,7 +242,7 @@ def abrir_zoom(nombre_prod, imagenes_b64):
 
 @st.dialog("🎁 Menú de Regalos (Promo 3x2)")
 def modal_regalo_3x2():
-    precio_max = 180.0
+    precio_max = 160.0
     st.markdown(f"¡Felicidades! Como llevas 2 piezas, tienes derecho a elegir una tercera completamente **GRATIS**.")
     st.info("👇 Estas son las piezas que aplican para tu regalo. ¡Elige rápido antes de que te la ganen!")
     
@@ -260,7 +260,7 @@ def modal_regalo_3x2():
     regalos_filtrados = sorted(regalos_filtrados, key=lambda x: x["precio"], reverse=True)[:50]
     
     if not regalos_filtrados:
-        st.warning("Uy, parece que en este momento no tenemos piezas disponibles.")
+        st.warning(f"Uy, parece que en este momento no tenemos piezas disponibles de ${precio_max} o menos.")
     else:
         for reg in regalos_filtrados:
             c1, c2 = st.columns([3, 1])
@@ -465,7 +465,7 @@ if vista_admin == "🎁 Gestor de Promociones":
     
     st.markdown("#### 🌟 Promoción Estática 3x2")
     c1_3x2, c2_3x2, _ = st.columns([6, 2, 2])
-    c1_3x2.info("Llevas 3, pagas 2 *(Regalo Topado a $180.00)*")
+    c1_3x2.info("Llevas 3, pagas 2 *(Regalo Topado a $160.00)*")
     activa_3x2 = c2_3x2.toggle("Activada", value=config_promos.get("promo_3x2", False), key="tg_3x2")
     if activa_3x2 != config_promos.get("promo_3x2", False):
         config_promos["promo_3x2"] = activa_3x2
@@ -709,7 +709,6 @@ elif vista_admin == "➕ Agregar Producto":
         else:
             st.error("Falta el nombre, subir foto o asignar precio.")
 
-# --- SECCIÓN VER APARTADOS MODIFICADA CON LISTA COMPACTA ---
 elif vista_admin == "📋 Ver Apartados":
     st.title("📋 Registro de Clientes y Apartados")
     todos_los_apartados = list(col_apartados.find({}))
@@ -763,7 +762,7 @@ elif vista_admin == "📋 Ver Apartados":
                         
                 separador = " | " if info_extra else ""
                 info_html = f"<span style='color:{color_attr};'>{info_extra}</span>" if info_extra else ""
-                variante_html = "🟠(Detalle)" if item.get("campo_stock") == "stock_detalle" else "🟢(Perfecta)"
+                variante_html = "🟠 (Detalle)" if item.get("campo_stock") == "stock_detalle" else "🟢 (Perfecta)"
                 nombre_final = f"{item['nombre_producto']} {info_extra} {variante_html}" 
                 
                 total_cliente += precio_item
@@ -938,7 +937,7 @@ else:
                     st.session_state.abrir_modal_3x2 = True
                     st.rerun()
 
-        # --- CARRITO INTELIGENTE CON CANDADO 3x2 DE $180 ---
+        # --- CARRITO INTELIGENTE CON CANDADO 3x2 DE $160 ---
         with col_cart:
             cantidad_carrito = len(st.session_state.carrito)
             items_procesados = [{"item": item, "precio_efec": item['precio'], "es_promo_vol": False, "es_promo_3x2": False, "msg_wa": ""} for item in st.session_state.carrito]
@@ -968,8 +967,8 @@ else:
                 elegibles_todas = [ip for ip in items_procesados if ip["item"].get("tipo", "Bakugan") not in ["Carta", "BakuCore", "Extra"] and ip["item"].get("variante", "normal") != "detalle"]
                 max_regalos = len(elegibles_todas) // 3
                 
-                # CANDADO DE TITANIO: Solo las piezas de 180 o menos pueden ser regaladas.
-                elegibles_regalables = sorted([ip for ip in elegibles_todas if ip["precio_efec"] <= 180.0], key=lambda x: x["precio_efec"], reverse=True)
+                # CANDADO DE TITANIO: Solo las piezas de 160 o menos pueden ser regaladas.
+                elegibles_regalables = sorted([ip for ip in elegibles_todas if ip["precio_efec"] <= 160.0], key=lambda x: x["precio_efec"], reverse=True)
                 
                 piezas_regaladas = 0
                 for ip in elegibles_regalables:
