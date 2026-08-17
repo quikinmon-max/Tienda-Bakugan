@@ -4,7 +4,7 @@ import base64
 import uuid
 import urllib.parse
 from datetime import datetime, timedelta
-from PIL import Image, ImageOps, ImageFile
+from PIL import Image, ImageOps, ImageFile, ImageDraw, ImageFont
 import io
 from bson.objectid import ObjectId
 from collections import defaultdict 
@@ -46,6 +46,7 @@ col_apartados = db["apartados"]
 col_config = db["configuracion"] 
 col_ventas = db["ventas"] 
 col_carritos = db["carritos_temporales"] 
+col_penal = db["penalizaciones"] # --- NUEVA COLECCIÓN PARA DINERO DE APARTADOS CANCELADOS ---
 
 # ---------------- MOTOR NUCLEAR EN RAM (CACHÉ) ----------------
 @st.cache_data(ttl=600, show_spinner=False)
@@ -136,6 +137,17 @@ def comprimir_imagen(img_file):
     img = ImageOps.exif_transpose(img)
     if img.mode in ("RGBA", "P"): img = img.convert("RGB")
     img.thumbnail((800, 800))
+    
+    # --- SISTEMA DE PROTECCIÓN TIPO OF (MARCA DE AGUA) ---
+    draw = ImageDraw.Draw(img)
+    width, height = img.size
+    texto = "© BAKU-MARKET - FOTO ORIGINAL"
+    try: font = ImageFont.truetype("arial.ttf", 25)
+    except: font = ImageFont.load_default()
+        
+    draw.rectangle([(0, height - 30), (width, height)], fill=(0, 0, 0, 180))
+    draw.text((10, height - 25), texto, fill="white", font=font)
+
     buffer = io.BytesIO()
     img.save(buffer, format="JPEG", quality=70)
     return base64.b64encode(buffer.getvalue()).decode("utf-8")
@@ -209,7 +221,6 @@ def modal_whatsapp(enlace):
     st.markdown("### 🚨 ¡Falta un último paso!")
     st.markdown("Para procesar tu pedido, es obligatorio enviarnos el mensaje de confirmación automático:")
     
-    # --- BOTÓN NATIVO DE STREAMLIT PARA WHATSAPP ---
     st.link_button("📲 ENVIAR WHATSAPP AHORA", enlace, type="primary", use_container_width=True)
     
     st.warning("OJO: Recuerda que necesitas depositar el 10% de anticipo para que tu apartado sea válido. De lo contrario, podríamos llegar a cancelar tu pedido.")
@@ -291,6 +302,15 @@ def ejecutar_mantenimiento(trigger):
         for doc in vencidos:
             campo = doc.get("campo_stock", "stock")
             col_productos.update_one({"_id": doc["producto_id"]}, {"$inc": {campo: 1}})
+            # --- SE MANDA AUTOMÁTICAMENTE EL ANTICIPO A PENALIZACIONES ---
+            if doc.get("anticipo", 0) > 0:
+                col_penal.insert_one({
+                    "cliente": doc.get("comprador_nombre", "Auto-Cancelado"),
+                    "telefono": doc.get("comprador_telefono", "N/A"),
+                    "productos": [doc.get("nombre_producto", "Desconocido")],
+                    "monto_retenido": doc.get("anticipo", 0),
+                    "fecha": hora_qro()
+                })
             col_apartados.delete_one({"_id": doc["_id"]})
         forzar_actualizacion()
     
@@ -525,59 +545,89 @@ elif vista_admin == "⭐ Gestor de Referencias":
 
 elif vista_admin == "📊 Finanzas y Ventas":
     st.title("📊 Panel de Analítica Financiera")
-    ventas = list(col_ventas.find({}))
-    if not ventas:
-        st.info("Aún no tienes ventas registradas para analizar.")
-    else:
-        def calcular_metricas(lista_ventas):
-            ingresos = sum((v.get("precio_total", 0) - v.get("deuda_restante", 0)) for v in lista_ventas)
-            gastos = sum(v.get("gasto_envio", 0) for v in lista_ventas)
-            return ingresos, gastos, ingresos - gastos
-            
-        tab1, tab2, tab3, tab4 = st.tabs(["Hoy", "Últimos 7 Días", "Últimos 30 Días", "Este Año"])
-        for tab, dias in [(tab1, 0), (tab2, 7), (tab3, 30), (tab4, 365)]:
-            with tab:
-                datos_rango = [v for v in ventas if v["fecha_venta"] >= hora_qro() - timedelta(days=dias)]
-                ing, gas, gan = calcular_metricas(datos_rango)
-                col1, col2, col3, col4 = st.columns(4)
-                col1.metric("📦 Vendidas", len(datos_rango))
-                col2.metric("💸 Cobrado Bruto", f"${ing:,.2f}")
-                col3.metric("📉 Gastos", f"${gas:,.2f}")
-                col4.metric("💰 Neta (En Bolsa)", f"${gan:,.2f}")
+    
+    tab_ventas, tab_penalizaciones = st.tabs(["📦 Ventas Concretadas", "🚫 Penalizaciones (Ingresos Extra)"])
+    
+    with tab_ventas:
+        ventas = list(col_ventas.find({}))
+        if not ventas:
+            st.info("Aún no tienes ventas registradas para analizar.")
+        else:
+            def calcular_metricas(lista_ventas):
+                ingresos = sum((v.get("precio_total", 0) - v.get("deuda_restante", 0)) for v in lista_ventas)
+                gastos = sum(v.get("gasto_envio", 0) for v in lista_ventas)
+                return ingresos, gastos, ingresos - gastos
                 
-        st.markdown("---")
-        for v in reversed(ventas):
-            deuda = v.get("deuda_restante", 0.0)
-            neta = (v.get('precio_total', 0) - deuda) - v.get('gasto_envio', 0)
-            cobro_envio = v.get('ingreso_envio', 0)
-            gasto_envio = v.get('gasto_envio', 0)
-            
-            html_deuda = f'&nbsp;|&nbsp; 🔴 <b>Deuda: <span style="color: #e74c3c;">${deuda:,.2f}</span></b>' if deuda > 0 else ""
-            
-            st.markdown(f'<div class="tarjeta-cliente" style="margin-bottom: 5px;"><div style="font-size: 14px; margin-bottom: 5px;"><span style="color: #aaa;">📅 {v["fecha_venta"].strftime("%d/%m/%Y")}</span> &nbsp;|&nbsp; 👤 <b>{v["cliente"]}</b></div><div style="font-size: 15px; margin-bottom: 5px;">💰 <b>Ganancia Neta: <span style="color: #2ecc71;">${neta:,.2f}</span></b> &nbsp;|&nbsp; 📦 Cobro Envío: <span style="color: #f1c40f;">${cobro_envio:,.2f}</span> &nbsp;|&nbsp; 📉 Costo Guía: <span style="color: #e74c3c;">${gasto_envio:,.2f}</span>{html_deuda}</div><div style="font-size: 13px; color: #ccc;">📝 <i>Obs: {v.get("observaciones", "Ninguna")}</i></div></div>', unsafe_allow_html=True)
-            
-            with st.expander("✏️ Editar Venta / Liquidar Deuda", expanded=False):
-                c1, c2, c3, c4 = st.columns([1, 1, 1, 2])
-                with c1: e_cobro = st.number_input("Cobro Envío $", value=float(cobro_envio), step=10.0, key=f"ecob_{v['_id']}")
-                with c2: e_gasto = st.number_input("Costo Guía $", value=float(gasto_envio), step=10.0, key=f"egas_{v['_id']}")
-                with c3: e_deuda = st.number_input("Deuda Pendiente $", value=float(deuda), step=10.0, key=f"edeu_{v['_id']}", help="Si el cliente ya te pagó el resto, bájalo a $0.00")
-                with c4: e_obs = st.text_input("Observaciones / Guía", value=v.get("observaciones", ""), key=f"eobs_{v['_id']}")
+            col1, col2, col3, col4 = st.columns(4)
+            datos_rango = [v for v in ventas if v["fecha_venta"] >= hora_qro() - timedelta(days=365)]
+            ing, gas, gan = calcular_metricas(datos_rango)
+            col1.metric("📦 Vendidas", len(datos_rango))
+            col2.metric("💸 Cobrado Bruto", f"${ing:,.2f}")
+            col3.metric("📉 Gastos", f"${gas:,.2f}")
+            col4.metric("💰 Neta (En Bolsa)", f"${gan:,.2f}")
+                    
+            st.markdown("---")
+            for v in reversed(ventas):
+                deuda = v.get("deuda_restante", 0.0)
+                neta = (v.get('precio_total', 0) - deuda) - v.get('gasto_envio', 0)
+                cobro_envio = v.get('ingreso_envio', 0)
+                gasto_envio = v.get('gasto_envio', 0)
                 
-                if st.button("💾 Guardar Cambios", key=f"esave_{v['_id']}", use_container_width=True):
-                    precio_base = v.get("precio_productos", v.get("precio_total", 0) - v.get("ingreso_envio", 0))
-                    nuevo_precio_total = precio_base + e_cobro
-                    col_ventas.update_one(
-                        {"_id": v["_id"]},
-                        {"$set": {
-                            "ingreso_envio": e_cobro,
-                            "gasto_envio": e_gasto,
-                            "deuda_restante": e_deuda,
-                            "observaciones": e_obs,
-                            "precio_total": nuevo_precio_total,
-                            "precio_productos": precio_base
-                        }}
-                    )
-                    st.success("¡Venta actualizada exitosamente!")
+                html_deuda = f'&nbsp;|&nbsp; 🔴 <b>Deuda: <span style="color: #e74c3c;">${deuda:,.2f}</span></b>' if deuda > 0 else ""
+                
+                st.markdown(f'<div class="tarjeta-cliente" style="margin-bottom: 5px;"><div style="font-size: 14px; margin-bottom: 5px;"><span style="color: #aaa;">📅 {v["fecha_venta"].strftime("%d/%m/%Y")}</span> &nbsp;|&nbsp; 👤 <b>{v["cliente"]}</b></div><div style="font-size: 15px; margin-bottom: 5px;">💰 <b>Ganancia Neta: <span style="color: #2ecc71;">${neta:,.2f}</span></b> &nbsp;|&nbsp; 📦 Cobro Envío: <span style="color: #f1c40f;">${cobro_envio:,.2f}</span> &nbsp;|&nbsp; 📉 Costo Guía: <span style="color: #e74c3c;">${gasto_envio:,.2f}</span>{html_deuda}</div><div style="font-size: 13px; color: #ccc;">📝 <i>Obs: {v.get("observaciones", "Ninguna")}</i></div></div>', unsafe_allow_html=True)
+                
+                with st.expander("✏️ Editar Venta / Liquidar Deuda", expanded=False):
+                    c1, c2, c3, c4 = st.columns([1, 1, 1, 2])
+                    with c1: e_cobro = st.number_input("Cobro Envío $", value=float(cobro_envio), step=10.0, key=f"ecob_{v['_id']}")
+                    with c2: e_gasto = st.number_input("Costo Guía $", value=float(gasto_envio), step=10.0, key=f"egas_{v['_id']}")
+                    with c3: e_deuda = st.number_input("Deuda Pendiente $", value=float(deuda), step=10.0, key=f"edeu_{v['_id']}", help="Si el cliente ya te pagó el resto, bájalo a $0.00")
+                    with c4: e_obs = st.text_input("Observaciones / Guía", value=v.get("observaciones", ""), key=f"eobs_{v['_id']}")
+                    
+                    c_btn1, c_btn2 = st.columns(2)
+                    if c_btn1.button("💾 Guardar Cambios", key=f"esave_{v['_id']}", use_container_width=True):
+                        precio_base = v.get("precio_productos", v.get("precio_total", 0) - v.get("ingreso_envio", 0))
+                        nuevo_precio_total = precio_base + e_cobro
+                        col_ventas.update_one(
+                            {"_id": v["_id"]},
+                            {"$set": {
+                                "ingreso_envio": e_cobro,
+                                "gasto_envio": e_gasto,
+                                "deuda_restante": e_deuda,
+                                "observaciones": e_obs,
+                                "precio_total": nuevo_precio_total,
+                                "precio_productos": precio_base
+                            }}
+                        )
+                        st.success("¡Venta actualizada exitosamente!")
+                        st.rerun()
+                        
+                    # --- BOTÓN PARA BORRAR EL REGISTRO BUGUEADO ---
+                    if c_btn2.button("🗑️ Borrar Registro (Error)", key=f"edel_{v['_id']}", use_container_width=True, type="secondary"):
+                        col_ventas.delete_one({"_id": v["_id"]})
+                        st.success("Registro de venta eliminado correctamente.")
+                        st.rerun()
+                        
+    with tab_penalizaciones:
+        st.markdown("Aquí se refleja todo el dinero de anticipos que te quedaste por apartados no liquidados o cancelados. Esto suma a tus ganancias netas sin afectar el contador de piezas vendidas.")
+        penalizaciones = list(col_penal.find({}).sort("fecha", -1))
+        
+        if not penalizaciones:
+            st.info("No hay ingresos por apartados cancelados.")
+        else:
+            total_penal = sum(p.get("monto_retenido", 0) for p in penalizaciones)
+            st.metric("💰 Total Ingresos por Penalizaciones", f"${total_penal:,.2f}")
+            st.markdown("---")
+            for p in penalizaciones:
+                st.markdown(f"""
+                <div class="tarjeta-cliente">
+                    <b>📅 {p['fecha'].strftime('%d/%m/%Y')} | 👤 {p.get('cliente', 'Desconocido')} (WA: {p.get('telefono', 'N/A')})</b><br>
+                    <span style='color: #2ecc71; font-weight: bold;'>Ganancia retenida (Anticipo): ${p.get('monto_retenido', 0):,.2f}</span><br>
+                    <span style='font-size: 13px; color: #aaa;'>Piezas liberadas: {', '.join(p.get('productos', []))}</span>
+                </div>
+                """, unsafe_allow_html=True)
+                if st.button("🗑️ Borrar", key=f"del_p_{p['_id']}"):
+                    col_penal.delete_one({"_id": p["_id"]})
                     st.rerun()
 
 elif vista_admin == "🎨 Personalizar Página":
@@ -787,15 +837,21 @@ elif vista_admin == "📋 Ver Apartados":
                         st.success("¡Prórroga aplicada!")
                         st.rerun()
                         
+            # --- SE MODIFICÓ CANCELAR PARA QUE TAMBIÉN MANDE DINERO A PENALIZACIONES ---
             with col_canc:
                 with st.expander("🚫 Cancelar"):
-                    if st.button("Confirmar", key=f"btn_cancel_{tel}"):
+                    if st.button("Confirmar Cancelación", key=f"btn_cancel_{tel}"):
+                        if total_anticipo > 0:
+                            col_penal.insert_one({
+                                "cliente": nombre_cliente, "telefono": tel, "productos": nombres_items,
+                                "monto_retenido": total_anticipo, "fecha": hora_qro()
+                            })
                         for doc in items:
                             campo = doc.get("campo_stock", "stock")
                             col_productos.update_one({"_id": doc["producto_id"]}, {"$inc": {campo: 1}})
                             col_apartados.delete_one({"_id": doc["_id"]})
                         forzar_actualizacion()
-                        st.success("¡Cancelado!")
+                        st.success("¡Cancelado! El anticipo se movió a Penalizaciones.")
                         st.rerun()
 
             with col_notif:
@@ -1002,7 +1058,7 @@ else:
                                 if promo_envio.get("activa", False) and total_carrito >= promo_envio.get("monto_minimo", 2500.0):
                                     texto_crudo += f"\n\n🚚 *Nota extra: ¡Mi pedido califica para ENVÍO GRATIS!*"
                                     
-                                texto_crudo += f"\n\n⏱️ *Nota: Estoy consciente de que cuento con 4 días exactos (o la fecha establecida) para liquidar mi pedido y no perder mi apartado ni el anticipo del 10%.*"
+                                texto_crudo += f"\n\n⏱️ *Nota: Estoy consciente de que cuento con 4 días exactos (o la fecha establecida en mi ticket) para liquidar mi pedido y no perder mi apartado ni el anticipo del 10%.*"
 
                                 st.session_state.wa_link = f"https://api.whatsapp.com/send?phone=524462879839&text={urllib.parse.quote(texto_crudo)}"
                                 
