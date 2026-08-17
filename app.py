@@ -920,7 +920,7 @@ else:
         texto_default = "Ninguna / Solo Envío Gratis" if config_promos.get("envio_gratis", {}).get("activa", False) else "Ninguna"
         opciones_promo = [texto_default]
         if config_promos.get("promo_3x2", False): opciones_promo.append("🌟 Súper 3x2")
-        if config_promos.get("promo_15_off", False): opciones_promo.append("🔥 15% OFF (No Cartas/Detalles)")
+        if config_promos.get("promo_15_off", False): opciones_promo.append("🔥 15% OFF")
         if config_promos.get("volumen", []) and any(p["activa"] for p in config_promos["volumen"]): opciones_promo.append("📦 Precio por Volumen")
         if config_promos.get("monto", []) and any(p["activa"] for p in config_promos["monto"]): opciones_promo.append("🤑 Descuento por Monto")
 
@@ -952,7 +952,7 @@ else:
                     st.session_state.abrir_modal_3x2 = True
                     st.rerun()
                     
-        if promo_seleccionada == "🔥 15% OFF (No Cartas/Detalles)":
+        if promo_seleccionada == "🔥 15% OFF":
             st.markdown(f"""
             <div style="background: linear-gradient(90deg, #e74c3c, #c0392b); padding: 15px; border-radius: 8px; text-align: center; color: white; margin-bottom: 10px;">
                 <h3 style="margin: 0; color: white;">🔥 ¡Tienes 15% de Descuento!</h3>
@@ -986,7 +986,7 @@ else:
                         ip["precio_efec"] = promos_volumen_aplicables[t]
                         ip["es_promo_vol"] = True
                         
-            if promo_seleccionada == "🔥 15% OFF (No Cartas/Detalles)":
+            if promo_seleccionada == "🔥 15% OFF":
                 piezas_con_descuento = 0
                 for ip in items_procesados:
                     if ip["item"].get("tipo") != "Carta" and ip["item"].get("variante") != "detalle":
@@ -1120,7 +1120,7 @@ else:
 
         banner_frases = []
         if config_promos.get("promo_3x2", False): banner_frases.append("🌟 <b>¡SÚPER 3x2! Llevas 3, Pagas 2</b>")
-        if config_promos.get("promo_15_off", False): banner_frases.append("🔥 <b>15% OFF (Excluye Cartas/Detalles)</b>")
+        if config_promos.get("promo_15_off", False): banner_frases.append("🔥 <b>15% OFF</b>")
         for p in config_promos.get("volumen", []):
             if p["activa"]: banner_frases.append(f"📦 <b>{p['min_piezas']}+ {p['categoria']}s a ${p['precio_fijo']:,.2f} c/u</b>")
         for p in config_promos.get("monto", []):
