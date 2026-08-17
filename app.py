@@ -57,6 +57,7 @@ def obtener_configuraciones():
             "volumen": [{"id": str(uuid.uuid4())[:8], "categoria": "Carta", "min_piezas": 5, "precio_fijo": 40.0, "activa": True}],
             "monto": [{"id": str(uuid.uuid4())[:8], "min_total": 2000.0, "porcentaje": 10.0, "activa": True}],
             "promo_3x2": False,
+            "promo_15_off": False,
             "envio_gratis": {"activa": False, "monto_minimo": 2500.0}
         }
         col_config.insert_one({"_id": "promociones", **promos})
@@ -64,6 +65,9 @@ def obtener_configuraciones():
         actualizar = False
         if "promo_3x2" not in promos:
             promos["promo_3x2"] = False
+            actualizar = True
+        if "promo_15_off" not in promos:
+            promos["promo_15_off"] = False
             actualizar = True
         if "envio_gratis" not in promos:
             promos["envio_gratis"] = {"activa": False, "monto_minimo": 2500.0}
@@ -471,6 +475,15 @@ if vista_admin == "🎁 Gestor de Promociones":
         config_promos["promo_3x2"] = activa_3x2
         cambios = True
 
+    # --- NUEVA PROMO 15% OFF ---
+    st.markdown("#### 🔥 Promoción Estática 15% OFF")
+    c1_15, c2_15, _ = st.columns([6, 2, 2])
+    c1_15.info("15% de descuento en la tienda *(No aplica en Cartas ni piezas con Detalle)*")
+    activa_15 = c2_15.toggle("Activada", value=config_promos.get("promo_15_off", False), key="tg_15")
+    if activa_15 != config_promos.get("promo_15_off", False):
+        config_promos["promo_15_off"] = activa_15
+        cambios = True
+
     st.markdown("#### 🚚 Envío Gratis")
     c1_env, c2_env, _ = st.columns([6, 2, 2])
     monto_env = config_promos.get("envio_gratis", {}).get("monto_minimo", 2500.0)
@@ -709,6 +722,7 @@ elif vista_admin == "➕ Agregar Producto":
         else:
             st.error("Falta el nombre, subir foto o asignar precio.")
 
+# --- SECCIÓN VER APARTADOS MODIFICADA CON LISTA COMPACTA ---
 elif vista_admin == "📋 Ver Apartados":
     st.title("📋 Registro de Clientes y Apartados")
     todos_los_apartados = list(col_apartados.find({}))
@@ -906,6 +920,7 @@ else:
         texto_default = "Ninguna / Solo Envío Gratis" if config_promos.get("envio_gratis", {}).get("activa", False) else "Ninguna"
         opciones_promo = [texto_default]
         if config_promos.get("promo_3x2", False): opciones_promo.append("🌟 Súper 3x2")
+        if config_promos.get("promo_15_off", False): opciones_promo.append("🔥 15% OFF (No Cartas/Detalles)")
         if config_promos.get("volumen", []) and any(p["activa"] for p in config_promos["volumen"]): opciones_promo.append("📦 Precio por Volumen")
         if config_promos.get("monto", []) and any(p["activa"] for p in config_promos["monto"]): opciones_promo.append("🤑 Descuento por Monto")
 
@@ -922,7 +937,7 @@ else:
             promo_seleccionada = texto_default
         st.markdown("---")
 
-        # ---------------- EVALUAR PROMOS Y BANNER 3x2 INTERACTIVO ----------------
+        # ---------------- EVALUAR PROMOS Y BANNER 3x2 / 15% OFF INTERACTIVO ----------------
         if promo_seleccionada == "🌟 Súper 3x2":
             elegibles_3x2 = [i for i in st.session_state.carrito if i.get("tipo") not in ["Carta", "BakuCore", "Extra"] and i.get("variante") != "detalle"]
             if len(elegibles_3x2) > 0 and len(elegibles_3x2) % 3 == 2:
@@ -936,11 +951,19 @@ else:
                 if st.button("👉 ABRIR MENÚ PARA ELEGIR MI REGALO 👈", type="primary", use_container_width=True):
                     st.session_state.abrir_modal_3x2 = True
                     st.rerun()
+                    
+        if promo_seleccionada == "🔥 15% OFF (No Cartas/Detalles)":
+            st.markdown(f"""
+            <div style="background: linear-gradient(90deg, #e74c3c, #c0392b); padding: 15px; border-radius: 8px; text-align: center; color: white; margin-bottom: 10px;">
+                <h3 style="margin: 0; color: white;">🔥 ¡Tienes 15% de Descuento!</h3>
+                <p style="margin: 0; font-size: 16px;">Se aplica en automático a tus piezas aplicables (Excluye Cartas y Detalles)</p>
+            </div>
+            """, unsafe_allow_html=True)
 
-        # --- CARRITO INTELIGENTE CON CANDADO 3x2 DE $160 ---
+        # --- CARRITO INTELIGENTE CON CANDADOS DE PROMOS ---
         with col_cart:
             cantidad_carrito = len(st.session_state.carrito)
-            items_procesados = [{"item": item, "precio_efec": item['precio'], "es_promo_vol": False, "es_promo_3x2": False, "msg_wa": ""} for item in st.session_state.carrito]
+            items_procesados = [{"item": item, "precio_efec": item['precio'], "es_promo_vol": False, "es_promo_3x2": False, "es_promo_15": False, "msg_wa": ""} for item in st.session_state.carrito]
             conteo_categorias = {}
             textos_promos_activas = []
             
@@ -962,6 +985,19 @@ else:
                     if t in promos_volumen_aplicables and ip['item']['precio'] > promos_volumen_aplicables[t]:
                         ip["precio_efec"] = promos_volumen_aplicables[t]
                         ip["es_promo_vol"] = True
+                        
+            if promo_seleccionada == "🔥 15% OFF (No Cartas/Detalles)":
+                piezas_con_descuento = 0
+                for ip in items_procesados:
+                    if ip["item"].get("tipo") != "Carta" and ip["item"].get("variante") != "detalle":
+                        ip["precio_efec"] = ip["precio_efec"] * 0.85
+                        ip["es_promo_15"] = True
+                        piezas_con_descuento += 1
+                        
+                if piezas_con_descuento > 0:
+                    textos_promos_activas.append(f"🔥 ¡15% de descuento aplicado a {piezas_con_descuento} pieza(s)!")
+                else:
+                    textos_promos_activas.append("⚠️ Tu promo de 15% está activa, pero requiere piezas perfectas (excluye cartas).")
                     
             if promo_seleccionada == "🌟 Súper 3x2":
                 elegibles_todas = [ip for ip in items_procesados if ip["item"].get("tipo", "Bakugan") not in ["Carta", "BakuCore", "Extra"] and ip["item"].get("variante", "normal") != "detalle"]
@@ -995,6 +1031,7 @@ else:
             total_carrito = 0
             for ip in items_procesados:
                 if ip["es_promo_3x2"]: ip["precio_final"], ip["msg_wa"] = 0.0, " (¡Gratis 3x2!)"
+                elif ip["es_promo_15"]: ip["precio_final"], ip["msg_wa"] = ip["precio_efec"], " (-15%)"
                 elif ip["es_promo_vol"]: ip["precio_final"], ip["msg_wa"] = ip["precio_efec"], f" (Promo ${ip['precio_efec']})"
                 elif mejor_promo_monto: ip["precio_final"], ip["msg_wa"] = ip["precio_efec"] * (1 - (mejor_promo_monto["porcentaje"] / 100.0)), f" (-{mejor_promo_monto['porcentaje']}%)"
                 else: ip["precio_final"], ip["msg_wa"] = ip["precio_efec"], ""
@@ -1083,6 +1120,7 @@ else:
 
         banner_frases = []
         if config_promos.get("promo_3x2", False): banner_frases.append("🌟 <b>¡SÚPER 3x2! Llevas 3, Pagas 2</b>")
+        if config_promos.get("promo_15_off", False): banner_frases.append("🔥 <b>15% OFF (Excluye Cartas/Detalles)</b>")
         for p in config_promos.get("volumen", []):
             if p["activa"]: banner_frases.append(f"📦 <b>{p['min_piezas']}+ {p['categoria']}s a ${p['precio_fijo']:,.2f} c/u</b>")
         for p in config_promos.get("monto", []):
