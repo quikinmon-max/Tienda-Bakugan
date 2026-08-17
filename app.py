@@ -46,7 +46,7 @@ col_apartados = db["apartados"]
 col_config = db["configuracion"] 
 col_ventas = db["ventas"] 
 col_carritos = db["carritos_temporales"] 
-col_penal = db["penalizaciones"] # --- NUEVA COLECCIÓN PARA DINERO DE APARTADOS CANCELADOS ---
+col_penal = db["penalizaciones"] 
 
 # ---------------- MOTOR NUCLEAR EN RAM (CACHÉ) ----------------
 @st.cache_data(ttl=600, show_spinner=False)
@@ -302,7 +302,6 @@ def ejecutar_mantenimiento(trigger):
         for doc in vencidos:
             campo = doc.get("campo_stock", "stock")
             col_productos.update_one({"_id": doc["producto_id"]}, {"$inc": {campo: 1}})
-            # --- SE MANDA AUTOMÁTICAMENTE EL ANTICIPO A PENALIZACIONES ---
             if doc.get("anticipo", 0) > 0:
                 col_penal.insert_one({
                     "cliente": doc.get("comprador_nombre", "Auto-Cancelado"),
@@ -602,7 +601,6 @@ elif vista_admin == "📊 Finanzas y Ventas":
                         st.success("¡Venta actualizada exitosamente!")
                         st.rerun()
                         
-                    # --- BOTÓN PARA BORRAR EL REGISTRO BUGUEADO ---
                     if c_btn2.button("🗑️ Borrar Registro (Error)", key=f"edel_{v['_id']}", use_container_width=True, type="secondary"):
                         col_ventas.delete_one({"_id": v["_id"]})
                         st.success("Registro de venta eliminado correctamente.")
@@ -711,6 +709,7 @@ elif vista_admin == "➕ Agregar Producto":
         else:
             st.error("Falta el nombre, subir foto o asignar precio.")
 
+# --- SECCIÓN VER APARTADOS MODIFICADA CON LISTA COMPACTA ---
 elif vista_admin == "📋 Ver Apartados":
     st.title("📋 Registro de Clientes y Apartados")
     todos_los_apartados = list(col_apartados.find({}))
@@ -740,46 +739,60 @@ elif vista_admin == "📋 Ver Apartados":
                 prod_id_str = str(item.get("producto_id", ""))
                 prod_bd = diccionario_productos.get(prod_id_str, {})
                 info_extra = ""
+                color_attr = "#aaa"
                 
                 if prod_bd:
                     tipo_prod = prod_bd.get("tipo", "Bakugan")
                     if "atributo" in prod_bd and tipo_prod in tipos_con_atributo:
+                        attr1 = prod_bd.get("atributo", "")
                         attr2 = prod_bd.get("atributo_2", "Ninguno")
-                        if attr2 != "Ninguno":
-                            info_extra = f" | {prod_bd['atributo']} / {attr2}"
-                        else:
-                            info_extra = f" | {prod_bd['atributo']}"
-                    elif "material" in prod_bd and tipo_prod == "Carta":
-                        info_extra = f" | {prod_bd['material']}"
-                    elif "simbolo" in prod_bd and tipo_prod == "BakuCore":
-                        info_extra = f" | {prod_bd['simbolo']}"
+                        info_extra = f"{attr1} / {attr2}" if attr2 != "Ninguno" else attr1
                         
-                variante = " 🟠(Detalle)" if item.get("campo_stock") == "stock_detalle" else " 🟢(Perfecta)"
-                nombre_final = f"{item['nombre_producto']}{info_extra}{variante}"
+                        if "Pyrus" in attr1: color_attr = "#e74c3c"
+                        elif "Aquos" in attr1: color_attr = "#3498db"
+                        elif "Ventus" in attr1: color_attr = "#2ecc71"
+                        elif "Darkus" in attr1: color_attr = "#9b59b6"
+                        elif "Haos" in attr1: color_attr = "#f1c40f"
+                        elif "Subterra" in attr1: color_attr = "#e67e22"
+                        elif "Aurelus" in attr1: color_attr = "#f39c12"
+                        
+                    elif "material" in prod_bd and tipo_prod == "Carta":
+                        info_extra = prod_bd.get('material', '')
+                    elif "simbolo" in prod_bd and tipo_prod == "BakuCore":
+                        info_extra = prod_bd.get('simbolo', '')
+                        
+                separador = " | " if info_extra else ""
+                info_html = f"<span style='color:{color_attr};'>{info_extra}</span>" if info_extra else ""
+                variante_html = "🟠 (Detalle)" if item.get("campo_stock") == "stock_detalle" else "🟢 (Perfecta)"
+                nombre_final = f"{item['nombre_producto']} {info_extra} {variante_html}" 
                 
                 total_cliente += precio_item
                 total_anticipo += item.get("anticipo", 0.0)
                 fechas_venc.append(item.get("fecha_vencimiento", hora_qro()))
                 nombres_items.append(nombre_final) 
                 
-                c_txt, c_ver, c_del = st.columns([8, 1, 1])
-                c_txt.markdown(f"- **{item['nombre_producto']}** <span style='color:#f39c12;'>{info_extra}</span> <span style='font-size: 0.8em; color:#a5b1c2;'>{variante}</span> (${precio_item:,.2f}) _[Apt: {fecha_str}]_", unsafe_allow_html=True)
+                c_ver, c_txt, c_del = st.columns([1, 9, 1])
                 
-                if c_ver.button("🖼️", key=f"ver_it_{item['_id']}", help="Ver fotos de esta pieza"):
-                    info_img = obtener_foto_mongo(prod_id_str)
-                    imgs = info_img.get("imagenes_detalle_b64", []) if item.get("campo_stock") == "stock_detalle" else info_img.get("imagenes_b64", [])
-                    if not imgs: imgs = info_img.get("imagenes_b64", [])
-                    if imgs:
-                        abrir_zoom(nombre_final, imgs)
-                    else:
-                        st.toast("No hay foto guardada para esta pieza ❌")
-
-                if c_del.button("❌", key=f"del_it_{item['_id']}", help="Quitar del pedido y regresar stock"):
-                    campo = item.get("campo_stock", "stock")
-                    col_productos.update_one({"_id": item["producto_id"]}, {"$inc": {campo: 1}})
-                    col_apartados.delete_one({"_id": item["_id"]})
-                    forzar_actualizacion()
-                    st.rerun()
+                with c_ver:
+                    if st.button("🖼️", key=f"ver_it_{item['_id']}", help="Ver foto"):
+                        info_img = obtener_foto_mongo(prod_id_str)
+                        imgs = info_img.get("imagenes_detalle_b64", []) if item.get("campo_stock") == "stock_detalle" else info_img.get("imagenes_b64", [])
+                        if not imgs: imgs = info_img.get("imagenes_b64", [])
+                        if imgs:
+                            abrir_zoom(item['nombre_producto'], imgs)
+                        else:
+                            st.toast("No hay foto guardada para esta pieza ❌")
+                            
+                with c_txt:
+                    st.markdown(f"<div style='margin-top: 5px; font-size: 16px;'>&bull; &nbsp;<b>{item['nombre_producto']}</b>{separador}{info_html} {variante_html} (${precio_item:,.2f}) <i>[Apt: {fecha_str}]</i></div>", unsafe_allow_html=True)
+                    
+                with c_del:
+                    if st.button("❌", key=f"del_it_{item['_id']}", help="Quitar del pedido y regresar stock"):
+                        campo = item.get("campo_stock", "stock")
+                        col_productos.update_one({"_id": item["producto_id"]}, {"$inc": {campo: 1}})
+                        col_apartados.delete_one({"_id": item["_id"]})
+                        forzar_actualizacion()
+                        st.rerun()
             
             fecha_max_venc = max(fechas_venc).strftime("%d/%m %H:%M")
             restante = total_cliente - total_anticipo
@@ -837,7 +850,6 @@ elif vista_admin == "📋 Ver Apartados":
                         st.success("¡Prórroga aplicada!")
                         st.rerun()
                         
-            # --- SE MODIFICÓ CANCELAR PARA QUE TAMBIÉN MANDE DINERO A PENALIZACIONES ---
             with col_canc:
                 with st.expander("🚫 Cancelar"):
                     if st.button("Confirmar Cancelación", key=f"btn_cancel_{tel}"):
