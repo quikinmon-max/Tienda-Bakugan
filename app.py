@@ -219,18 +219,32 @@ def abrir_referencias():
     if st.button("Cerrar Ventana", use_container_width=True):
         st.rerun()
 
+# --- VENTANA GIGANTE DE WHATSAPP BLINDADA ---
 @st.dialog("✅ ¡Apartado Exitoso!")
 def modal_whatsapp(enlace):
     st.success("Tus piezas ya están bloqueadas y apartadas en el sistema.")
     st.markdown("### 🚨 ¡Falta un último paso!")
     st.markdown("Para procesar tu pedido, es obligatorio enviarnos el mensaje de confirmación automático:")
     
-    st.link_button("📲 ENVIAR WHATSAPP AHORA", enlace, type="primary", use_container_width=True)
+    st.link_button("📲 ABRIR WHATSAPP AUTOMÁTICO", enlace, type="primary", use_container_width=True)
+    
+    st.markdown(f"""
+    <div style="text-align: center; margin-top: 5px; margin-bottom: 15px;">
+        <a href="{enlace}" target="_top" style="color: #25D366; font-weight: bold; text-decoration: underline;">
+            👉 ¿El botón verde no te abre WhatsApp? Toca este enlace 👈
+        </a>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    with st.expander("🛠️ Si nada de lo anterior funciona (Opción Manual)"):
+        st.markdown("Copia el texto de abajo y mándanoslo manualmente al número **446 287 9839**:")
+        st.code(st.session_state.get('wa_texto_crudo', ''), language='text')
     
     st.warning("OJO: Recuerda que necesitas depositar el 10% de anticipo para que tu apartado sea válido. De lo contrario, podríamos llegar a cancelar tu pedido.")
     st.markdown("---")
     if st.button("Cerrar esta ventana (Ya envié mi mensaje)", use_container_width=True):
-        del st.session_state['wa_link']
+        if 'wa_link' in st.session_state: del st.session_state['wa_link']
+        if 'wa_texto_crudo' in st.session_state: del st.session_state['wa_texto_crudo']
         st.rerun()
 
 @st.dialog("🔍 Modo Detalle")
@@ -296,6 +310,10 @@ def modal_regalo_3x2():
     if st.button("Elegir más tarde / Cerrar Menú", use_container_width=True):
         if "abrir_modal_3x2" in st.session_state: st.session_state.abrir_modal_3x2 = False
         st.rerun()
+
+# --- AQUÍ ASEGURAMOS QUE SE DISPARE EL MODAL DEL WHATSAPP SI EXISTE EN MEMORIA ---
+if 'wa_link' in st.session_state and st.session_state.wa_link:
+    modal_whatsapp(st.session_state.wa_link)
 
 # ---------------- MANTENIMIENTO AUTOMÁTICO ----------------
 @st.cache_data(ttl=3600, show_spinner=False)
@@ -885,9 +903,10 @@ elif vista_admin == "📋 Ver Apartados":
                     texto_expiracion = f"Hola {nombre_cliente}, te escribo de Baku-Market. Te recuerdo que tu apartado de {len(items)} piezas (Restante: ${restante:,.2f}) vence el {fecha_max_venc}. ¿Gusta que revisemos un abono/prórroga o procesamos tu envío?"
                     texto_cancelacion = f"Hola {nombre_cliente}. Te notificamos que el tiempo de tu apartado concluyó en Baku-Market y tu pedido de {len(items)} piezas ha sido cancelado, liberando el stock. ¡Gracias por tu comprensión!"
                     
-                    st.markdown(f"[👋 Mensaje de Bienvenida](https://api.whatsapp.com/send?phone=52{tel.replace(' ', '')}&text={urllib.parse.quote(texto_bienvenida)})", unsafe_allow_html=True)
-                    st.markdown(f"<br>[⚠️ Aviso Expiración](https://api.whatsapp.com/send?phone=52{tel.replace(' ', '')}&text={urllib.parse.quote(texto_expiracion)})", unsafe_allow_html=True)
-                    st.markdown(f"<br>[🚫 Aviso Cancelación](https://api.whatsapp.com/send?phone=52{tel.replace(' ', '')}&text={urllib.parse.quote(texto_cancelacion)})", unsafe_allow_html=True)
+                    # --- ENLACES WA.ME UNIVERSALES Y SEGUROS ---
+                    st.markdown(f'<a href="https://wa.me/52{tel.replace(" ", "")}?text={urllib.parse.quote(texto_bienvenida)}" target="_blank" style="color: #3498db; text-decoration: none;">👋 <b>Mensaje de Bienvenida</b></a>', unsafe_allow_html=True)
+                    st.markdown(f'<br><a href="https://wa.me/52{tel.replace(" ", "")}?text={urllib.parse.quote(texto_expiracion)}" target="_blank" style="color: #f39c12; text-decoration: none;">⚠️ <b>Aviso Expiración</b></a>', unsafe_allow_html=True)
+                    st.markdown(f'<br><a href="https://wa.me/52{tel.replace(" ", "")}?text={urllib.parse.quote(texto_cancelacion)}" target="_blank" style="color: #e74c3c; text-decoration: none;">🚫 <b>Aviso Cancelación</b></a>', unsafe_allow_html=True)
             st.markdown("</div>", unsafe_allow_html=True)
 
 else:
@@ -1108,7 +1127,9 @@ else:
                                     
                                 texto_crudo += f"\n\n⏱️ *Nota: Estoy consciente de que cuento con 4 días exactos (o la fecha establecida en mi ticket) para liquidar mi pedido y no perder mi apartado ni el anticipo del 10%.*"
 
-                                st.session_state.wa_link = f"https://api.whatsapp.com/send?phone=524462879839&text={urllib.parse.quote(texto_crudo)}"
+                                # --- AQUÍ GUARDAMOS EL TEXTO EN MEMORIA POR SI EL BOTÓN FALLA ---
+                                st.session_state.wa_texto_crudo = texto_crudo
+                                st.session_state.wa_link = f"https://wa.me/524462879839?text={urllib.parse.quote(texto_crudo)}"
                                 
                                 st.session_state.carrito = [] 
                                 st.session_state.bloqueo_checkout = False
