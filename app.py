@@ -219,7 +219,6 @@ def abrir_referencias():
     if st.button("Cerrar Ventana", use_container_width=True):
         st.rerun()
 
-# --- VENTANA GIGANTE DE WHATSAPP BLINDADA ---
 @st.dialog("✅ ¡Apartado Exitoso!")
 def modal_whatsapp(enlace):
     st.success("Tus piezas ya están bloqueadas y apartadas en el sistema.")
@@ -903,7 +902,6 @@ elif vista_admin == "📋 Ver Apartados":
                     texto_expiracion = f"Hola {nombre_cliente}, te escribo de Baku-Market. Te recuerdo que tu apartado de {len(items)} piezas (Restante: ${restante:,.2f}) vence el {fecha_max_venc}. ¿Gusta que revisemos un abono/prórroga o procesamos tu envío?"
                     texto_cancelacion = f"Hola {nombre_cliente}. Te notificamos que el tiempo de tu apartado concluyó en Baku-Market y tu pedido de {len(items)} piezas ha sido cancelado, liberando el stock. ¡Gracias por tu comprensión!"
                     
-                    # --- ENLACES WA.ME UNIVERSALES Y SEGUROS ---
                     st.markdown(f'<a href="https://wa.me/52{tel.replace(" ", "")}?text={urllib.parse.quote(texto_bienvenida)}" target="_blank" style="color: #3498db; text-decoration: none;">👋 <b>Mensaje de Bienvenida</b></a>', unsafe_allow_html=True)
                     st.markdown(f'<br><a href="https://wa.me/52{tel.replace(" ", "")}?text={urllib.parse.quote(texto_expiracion)}" target="_blank" style="color: #f39c12; text-decoration: none;">⚠️ <b>Aviso Expiración</b></a>', unsafe_allow_html=True)
                     st.markdown(f'<br><a href="https://wa.me/52{tel.replace(" ", "")}?text={urllib.parse.quote(texto_cancelacion)}" target="_blank" style="color: #e74c3c; text-decoration: none;">🚫 <b>Aviso Cancelación</b></a>', unsafe_allow_html=True)
@@ -1429,8 +1427,8 @@ else:
                                     st.session_state.carrito.append({"_id": prod["_id"], "nombre": f"{prod['nombre']} (Detalle)", "precio": precio_detalle, "variante": "detalle", "tipo": tipo_real})
                                     guardar_carrito() 
                                     st.rerun()
-                        else: 
-                            st.button("✅ En carrito", disabled=True, key=f"max_d_{prod['_id']}", use_container_width=True)
+                            else: 
+                                st.button("✅ En carrito", disabled=True, key=f"max_d_{prod['_id']}", use_container_width=True)
 
                     if es_modo_edicion:
                         st.markdown('<hr style="margin: 10px 0px; border: none; border-top: 1px solid rgba(255,255,255,0.2);">', unsafe_allow_html=True)
