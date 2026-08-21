@@ -575,7 +575,8 @@ elif vista_admin == "⭐ Gestor de Referencias":
 elif vista_admin == "📊 Finanzas y Ventas":
     st.title("📊 Panel de Analítica Financiera")
     
-    tab_ventas, tab_penalizaciones = st.tabs(["📦 Ventas Concretadas", "🚫 Penalizaciones (Ingresos Extra)"])
+    # --- TRES PESTAÑAS: VENTAS, MEJORES CLIENTES, PENALIZACIONES ---
+    tab_ventas, tab_clientes, tab_penalizaciones = st.tabs(["📦 Ventas Concretadas", "👥 Mejores Clientes", "🚫 Penalizaciones (Ingresos Extra)"])
     
     with tab_ventas:
         ventas = list(col_ventas.find({}))
@@ -605,6 +606,11 @@ elif vista_admin == "📊 Finanzas y Ventas":
                 html_deuda = f'&nbsp;|&nbsp; 🔴 <b>Deuda: <span style="color: #e74c3c;">${deuda:,.2f}</span></b>' if deuda > 0 else ""
                 
                 st.markdown(f'<div class="tarjeta-cliente" style="margin-bottom: 5px;"><div style="font-size: 14px; margin-bottom: 5px;"><span style="color: #aaa;">📅 {v["fecha_venta"].strftime("%d/%m/%Y")}</span> &nbsp;|&nbsp; 👤 <b>{v["cliente"]}</b></div><div style="font-size: 15px; margin-bottom: 5px;">💰 <b>Ganancia Neta: <span style="color: #2ecc71;">${neta:,.2f}</span></b> &nbsp;|&nbsp; 📦 Cobro Envío: <span style="color: #f1c40f;">${cobro_envio:,.2f}</span> &nbsp;|&nbsp; 📉 Costo Guía: <span style="color: #e74c3c;">${gasto_envio:,.2f}</span>{html_deuda}</div><div style="font-size: 13px; color: #ccc;">📝 <i>Obs: {v.get("observaciones", "Ninguna")}</i></div></div>', unsafe_allow_html=True)
+                
+                # --- AQUÍ ESTÁ EL EXPANDER PARA VER QUÉ COMPRÓ EN ESTA VENTA ---
+                with st.expander("📦 Ver piezas vendidas"):
+                    for p_nombre in v.get("productos", []):
+                        st.markdown(f"<div style='margin-left: 10px; font-size: 14px;'>&bull; {p_nombre}</div>", unsafe_allow_html=True)
                 
                 with st.expander("✏️ Editar Venta / Liquidar Deuda", expanded=False):
                     c1, c2, c3, c4 = st.columns([1, 1, 1, 2])
@@ -636,6 +642,42 @@ elif vista_admin == "📊 Finanzas y Ventas":
                         st.success("Registro de venta eliminado correctamente.")
                         st.rerun()
                         
+    # --- NUEVA PESTAÑA DE CLIENTES VIP ---
+    with tab_clientes:
+        st.markdown("Aquí puedes ver el historial acumulado de tus clientes, ordenados por quién ha gastado más en tu tienda en toda la historia. 👑")
+        ventas_todas = list(col_ventas.find({}))
+        if not ventas_todas:
+            st.info("Aún no tienes clientes registrados.")
+        else:
+            clientes_agrupados = {}
+            for v in ventas_todas:
+                tel = v.get("telefono", "Sin número")
+                if tel not in clientes_agrupados:
+                    clientes_agrupados[tel] = {
+                        "nombre": v.get("cliente", "Desconocido"),
+                        "total_gastado": 0.0,
+                        "productos": [],
+                        "pedidos": 0
+                    }
+                # Sumamos el total del pedido
+                clientes_agrupados[tel]["total_gastado"] += v.get("precio_total", 0)
+                clientes_agrupados[tel]["pedidos"] += 1
+                clientes_agrupados[tel]["productos"].extend(v.get("productos", []))
+                
+            # Ordenamos del que gastó más al que menos
+            clientes_ordenados = sorted(clientes_agrupados.items(), key=lambda x: x[1]["total_gastado"], reverse=True)
+            
+            for tel, data in clientes_ordenados:
+                st.markdown(f'''
+                <div class="tarjeta-cliente" style="margin-bottom: 5px;">
+                    <div style="font-size: 16px;">👑 <b>{data["nombre"]}</b> | 📞 WA: {tel}</div>
+                    <div style="font-size: 15px; color: #2ecc71; margin-top: 5px;">💰 <b>Total Invertido: ${data["total_gastado"]:,.2f}</b> &nbsp;|&nbsp; <span style="color:#aaa;">🛒 Pedidos Totales: {data["pedidos"]}</span></div>
+                </div>
+                ''', unsafe_allow_html=True)
+                with st.expander(f"📦 Ver historial completo de piezas ({len(data['productos'])})"):
+                    for prod_name in data["productos"]:
+                        st.markdown(f"<div style='margin-left: 10px; font-size: 14px;'>&bull; {prod_name}</div>", unsafe_allow_html=True)
+
     with tab_penalizaciones:
         st.markdown("Aquí se refleja todo el dinero de anticipos que te quedaste por apartados no liquidados o cancelados. Esto suma a tus ganancias netas sin afectar el contador de piezas vendidas.")
         penalizaciones = list(col_penal.find({}).sort("fecha", -1))
@@ -1427,8 +1469,8 @@ else:
                                     st.session_state.carrito.append({"_id": prod["_id"], "nombre": f"{prod['nombre']} (Detalle)", "precio": precio_detalle, "variante": "detalle", "tipo": tipo_real})
                                     guardar_carrito() 
                                     st.rerun()
-                            else: 
-                                st.button("✅ En carrito", disabled=True, key=f"max_d_{prod['_id']}", use_container_width=True)
+                        else: 
+                            st.button("✅ En carrito", disabled=True, key=f"max_d_{prod['_id']}", use_container_width=True)
 
                     if es_modo_edicion:
                         st.markdown('<hr style="margin: 10px 0px; border: none; border-top: 1px solid rgba(255,255,255,0.2);">', unsafe_allow_html=True)
