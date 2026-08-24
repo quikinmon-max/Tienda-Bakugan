@@ -341,6 +341,7 @@ def ejecutar_mantenimiento(trigger):
 ejecutar_mantenimiento(datetime.utcnow().strftime("%Y-%m-%d %H"))
 
 # --- CSS EXTERMINADOR DEFINITIVO + AJUSTES COMPACTOS + BLINDAJE DE IMÁGENES ---
+# Se eliminó el estilo redundante de '.boton-carrito-inactivo' y '.check-icon' que causaba el doble botón visual.
 css_global = f"""
 <style>
 /* --- BLINDAJE ANTI-COPIA Y ANTI-DESCARGA --- */
@@ -492,6 +493,7 @@ if vista_admin == "🎁 Gestor de Promociones":
         config_promos["promo_3x2"] = activa_3x2
         cambios = True
 
+    # --- NUEVA PROMO 15% OFF ---
     st.markdown("#### 🔥 Promoción Estática 15% OFF")
     c1_15, c2_15, _ = st.columns([6, 2, 2])
     c1_15.info("15% de descuento en la tienda *(No aplica en Cartas ni piezas con Detalle)*")
@@ -648,7 +650,6 @@ elif vista_admin == "📊 Finanzas y Ventas":
             clientes_agrupados = {}
             for v in ventas_todas:
                 tel_original = v.get("telefono", "Sin número")
-                # --- AQUÍ ESTÁ EL FILTRO LIMPIADOR DE TELÉFONOS ---
                 tel_limpio = tel_original.replace(" ", "").replace("-", "").strip() if tel_original != "Sin número" else "Sin número"
                 
                 if tel_limpio not in clientes_agrupados:
@@ -1201,7 +1202,7 @@ else:
     productos_filtrados = []
     busqueda_low = busqueda_texto.lower() if busqueda_texto else ""
 
-    # --- FILTRO MÁGICO PARA LA PROMO DE VOLUMEN ---
+    # --- FILTRO MÁGICO PARA LA PROMO DE VOLUMEN (CARTAS) ---
     promo_activa_filtro = promo_seleccionada if not es_modo_edicion else "Ninguna"
     categorias_volumen = []
     if promo_activa_filtro == "📦 Precio por Volumen":
@@ -1469,6 +1470,7 @@ else:
                                             
                                     st.rerun()
                             else: 
+                                # Botón integrado para 'En carrito' deshabilitado
                                 st.button("✅ En carrito", disabled=True, key=f"max_n_{prod['_id']}", use_container_width=True)
                             
                         if stock_detalle > 0:
@@ -1481,8 +1483,9 @@ else:
                                     st.session_state.carrito.append({"_id": prod["_id"], "nombre": f"{prod['nombre']} (Detalle)", "precio": precio_detalle, "variante": "detalle", "tipo": tipo_real})
                                     guardar_carrito() 
                                     st.rerun()
-                        else: 
-                            st.button("✅ En carrito", disabled=True, key=f"max_d_{prod['_id']}", use_container_width=True)
+                            else: 
+                                # Botón integrado para 'En carrito' deshabilitado
+                                st.button("✅ En carrito", disabled=True, key=f"max_d_{prod['_id']}", use_container_width=True)
 
                     if es_modo_edicion:
                         st.markdown('<hr style="margin: 10px 0px; border: none; border-top: 1px solid rgba(255,255,255,0.2);">', unsafe_allow_html=True)
