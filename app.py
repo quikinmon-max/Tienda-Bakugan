@@ -492,7 +492,6 @@ if vista_admin == "🎁 Gestor de Promociones":
         config_promos["promo_3x2"] = activa_3x2
         cambios = True
 
-    # --- NUEVA PROMO 15% OFF ---
     st.markdown("#### 🔥 Promoción Estática 15% OFF")
     c1_15, c2_15, _ = st.columns([6, 2, 2])
     c1_15.info("15% de descuento en la tienda *(No aplica en Cartas ni piezas con Detalle)*")
@@ -575,7 +574,6 @@ elif vista_admin == "⭐ Gestor de Referencias":
 elif vista_admin == "📊 Finanzas y Ventas":
     st.title("📊 Panel de Analítica Financiera")
     
-    # --- TRES PESTAÑAS: VENTAS, MEJORES CLIENTES, PENALIZACIONES ---
     tab_ventas, tab_clientes, tab_penalizaciones = st.tabs(["📦 Ventas Concretadas", "👥 Mejores Clientes", "🚫 Penalizaciones (Ingresos Extra)"])
     
     with tab_ventas:
@@ -607,7 +605,6 @@ elif vista_admin == "📊 Finanzas y Ventas":
                 
                 st.markdown(f'<div class="tarjeta-cliente" style="margin-bottom: 5px;"><div style="font-size: 14px; margin-bottom: 5px;"><span style="color: #aaa;">📅 {v["fecha_venta"].strftime("%d/%m/%Y")}</span> &nbsp;|&nbsp; 👤 <b>{v["cliente"]}</b></div><div style="font-size: 15px; margin-bottom: 5px;">💰 <b>Ganancia Neta: <span style="color: #2ecc71;">${neta:,.2f}</span></b> &nbsp;|&nbsp; 📦 Cobro Envío: <span style="color: #f1c40f;">${cobro_envio:,.2f}</span> &nbsp;|&nbsp; 📉 Costo Guía: <span style="color: #e74c3c;">${gasto_envio:,.2f}</span>{html_deuda}</div><div style="font-size: 13px; color: #ccc;">📝 <i>Obs: {v.get("observaciones", "Ninguna")}</i></div></div>', unsafe_allow_html=True)
                 
-                # --- AQUÍ ESTÁ EL EXPANDER PARA VER QUÉ COMPRÓ EN ESTA VENTA ---
                 with st.expander("📦 Ver piezas vendidas"):
                     for p_nombre in v.get("productos", []):
                         st.markdown(f"<div style='margin-left: 10px; font-size: 14px;'>&bull; {p_nombre}</div>", unsafe_allow_html=True)
@@ -642,7 +639,6 @@ elif vista_admin == "📊 Finanzas y Ventas":
                         st.success("Registro de venta eliminado correctamente.")
                         st.rerun()
                         
-    # --- NUEVA PESTAÑA DE CLIENTES VIP ---
     with tab_clientes:
         st.markdown("Aquí puedes ver el historial acumulado de tus clientes, ordenados por quién ha gastado más en tu tienda en toda la historia. 👑")
         ventas_todas = list(col_ventas.find({}))
@@ -651,26 +647,28 @@ elif vista_admin == "📊 Finanzas y Ventas":
         else:
             clientes_agrupados = {}
             for v in ventas_todas:
-                tel = v.get("telefono", "Sin número")
-                if tel not in clientes_agrupados:
-                    clientes_agrupados[tel] = {
+                tel_original = v.get("telefono", "Sin número")
+                # --- AQUÍ ESTÁ EL FILTRO LIMPIADOR DE TELÉFONOS ---
+                tel_limpio = tel_original.replace(" ", "").replace("-", "").strip() if tel_original != "Sin número" else "Sin número"
+                
+                if tel_limpio not in clientes_agrupados:
+                    clientes_agrupados[tel_limpio] = {
                         "nombre": v.get("cliente", "Desconocido"),
+                        "telefono_real": tel_original, 
                         "total_gastado": 0.0,
                         "productos": [],
                         "pedidos": 0
                     }
-                # Sumamos el total del pedido
-                clientes_agrupados[tel]["total_gastado"] += v.get("precio_total", 0)
-                clientes_agrupados[tel]["pedidos"] += 1
-                clientes_agrupados[tel]["productos"].extend(v.get("productos", []))
+                clientes_agrupados[tel_limpio]["total_gastado"] += v.get("precio_total", 0)
+                clientes_agrupados[tel_limpio]["pedidos"] += 1
+                clientes_agrupados[tel_limpio]["productos"].extend(v.get("productos", []))
                 
-            # Ordenamos del que gastó más al que menos
             clientes_ordenados = sorted(clientes_agrupados.items(), key=lambda x: x[1]["total_gastado"], reverse=True)
             
             for tel, data in clientes_ordenados:
                 st.markdown(f'''
                 <div class="tarjeta-cliente" style="margin-bottom: 5px;">
-                    <div style="font-size: 16px;">👑 <b>{data["nombre"]}</b> | 📞 WA: {tel}</div>
+                    <div style="font-size: 16px;">👑 <b>{data["nombre"]}</b> | 📞 WA: {data["telefono_real"]}</div>
                     <div style="font-size: 15px; color: #2ecc71; margin-top: 5px;">💰 <b>Total Invertido: ${data["total_gastado"]:,.2f}</b> &nbsp;|&nbsp; <span style="color:#aaa;">🛒 Pedidos Totales: {data["pedidos"]}</span></div>
                 </div>
                 ''', unsafe_allow_html=True)
@@ -781,7 +779,6 @@ elif vista_admin == "➕ Agregar Producto":
         else:
             st.error("Falta el nombre, subir foto o asignar precio.")
 
-# --- SECCIÓN VER APARTADOS MODIFICADA CON LISTA COMPACTA ---
 elif vista_admin == "📋 Ver Apartados":
     st.title("📋 Registro de Clientes y Apartados")
     todos_los_apartados = list(col_apartados.find({}))
@@ -1204,10 +1201,22 @@ else:
     productos_filtrados = []
     busqueda_low = busqueda_texto.lower() if busqueda_texto else ""
 
+    # --- FILTRO MÁGICO PARA LA PROMO DE VOLUMEN ---
+    promo_activa_filtro = promo_seleccionada if not es_modo_edicion else "Ninguna"
+    categorias_volumen = []
+    if promo_activa_filtro == "📦 Precio por Volumen":
+        categorias_volumen = [p["categoria"] for p in config_promos.get("volumen", []) if p.get("activa", False)]
+
     for prod in catalogo_ram_entero:
         if busqueda_low and busqueda_low not in prod.get("nombre", "").lower(): continue
 
         tipo_p = prod.get("tipo", "Bakugan")
+        
+        # --- APLICAMOS EL FILTRO MÁGICO ---
+        if promo_activa_filtro == "📦 Precio por Volumen" and categorias_volumen:
+            if tipo_p not in categorias_volumen:
+                continue
+
         incluir = True
 
         if tipo_busqueda in tipos_con_atributo_ui:
@@ -1291,6 +1300,9 @@ else:
 
     # ---------------- RENDERIZADO PRINCIPAL (DIVIDIDO POR PESTAÑAS) ----------------
     productos_a_mostrar = productos_filtrados[:st.session_state.limite_items]
+
+    if not es_modo_edicion and promo_activa_filtro == "📦 Precio por Volumen" and categorias_volumen:
+        st.markdown(f"<div style='text-align: center; color: #3498db; margin-bottom: 15px;'>🔮 <b>Filtro Inteligente:</b> Como elegiste la promo por volumen, ocultamos el resto del catálogo para que te concentres solo en las piezas participantes ({', '.join(categorias_volumen)}s).</div>", unsafe_allow_html=True)
 
     if not productos_filtrados:
         if es_modo_admin_agotados:
