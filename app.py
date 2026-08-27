@@ -341,7 +341,6 @@ def ejecutar_mantenimiento(trigger):
 ejecutar_mantenimiento(datetime.utcnow().strftime("%Y-%m-%d %H"))
 
 # --- CSS EXTERMINADOR DEFINITIVO + AJUSTES COMPACTOS + BLINDAJE DE IMÁGENES ---
-# Se eliminó el estilo redundante de '.boton-carrito-inactivo' y '.check-icon' que causaba el doble botón visual.
 css_global = f"""
 <style>
 /* --- BLINDAJE ANTI-COPIA Y ANTI-DESCARGA --- */
@@ -493,7 +492,6 @@ if vista_admin == "🎁 Gestor de Promociones":
         config_promos["promo_3x2"] = activa_3x2
         cambios = True
 
-    # --- NUEVA PROMO 15% OFF ---
     st.markdown("#### 🔥 Promoción Estática 15% OFF")
     c1_15, c2_15, _ = st.columns([6, 2, 2])
     c1_15.info("15% de descuento en la tienda *(No aplica en Cartas ni piezas con Detalle)*")
@@ -780,6 +778,7 @@ elif vista_admin == "➕ Agregar Producto":
         else:
             st.error("Falta el nombre, subir foto o asignar precio.")
 
+# --- SECCIÓN VER APARTADOS MODIFICADA CON LISTA COMPACTA ---
 elif vista_admin == "📋 Ver Apartados":
     st.title("📋 Registro de Clientes y Apartados")
     todos_los_apartados = list(col_apartados.find({}))
@@ -1405,151 +1404,158 @@ else:
 
         # --- RENDERIZADO NORMAL DE TARJETAS (PÚBLICO, CATÁLOGO Y AGOTADOS) ---
         else:
-            cols = st.columns(3)
-            for index, prod in enumerate(productos_a_mostrar):
-                info_img = obtener_foto_mongo(str(prod["_id"]))
-                
-                with cols[index % 3]:
-                    st.markdown(f"<h4 style='margin-bottom: 5px; margin-top: 0px; font-size: 20px;'>{prod['nombre']}</h4>", unsafe_allow_html=True)
-                    
-                    if tipo_busqueda == "Piezas / Detalles 🛠️":
-                        imagenes_del_producto = info_img.get("imagenes_detalle_b64", info_img.get("imagenes_b64", []))
-                    else:
-                        imagenes_del_producto = info_img.get("imagenes_b64", [])
-                        if not imagenes_del_producto: imagenes_del_producto = info_img.get("imagenes_detalle_b64", [])
-                            
-                    if not imagenes_del_producto and "imagen_b64" in info_img: 
-                        imagenes_del_producto = [info_img["imagen_b64"]]
-                    
-                    if imagenes_del_producto:
-                        html_galeria = '<div class="galeria-container">'
-                        for b64_img in imagenes_del_producto: html_galeria += f'<img src="data:image/jpeg;base64,{b64_img}" class="galeria-img">'
-                        html_galeria += '</div>'
-                        st.markdown(html_galeria, unsafe_allow_html=True)
-                        if len(imagenes_del_producto) > 1: st.markdown("<p style='text-align: center; color: #aaa; font-size: 13px; margin-top: -5px; margin-bottom: 5px;'>👉 Desliza la foto</p>", unsafe_allow_html=True)
-                        if st.button("🔍 Ampliar foto", key=f"zoom_{prod['_id']}", use_container_width=True): abrir_zoom(prod['nombre'], imagenes_del_producto)
-                    
-                    stock_normal = prod.get('stock', 0)
-                    precio_normal = prod.get('precio', 0.0)
-                    stock_detalle = prod.get('stock_detalle', 0)
-                    precio_detalle = prod.get('precio_detalle', 0.0)
-                    texto_detalle = prod.get('detalle', "")
-
-                    if texto_detalle and 'stock_detalle' not in prod:
-                        stock_detalle, precio_detalle = stock_normal, precio_normal
-                        stock_normal, precio_normal = 0, 0.0
-                    
-                    tipo_real = prod.get("tipo", "Bakugan")
-                    if tipo_real == "Bakugan" or "atributo" in prod: 
-                        attr1 = prod.get('atributo', 'N/A')
-                        attr2 = prod.get('atributo_2', 'Ninguno')
-                        if attr2 != "Ninguno":
-                            st.markdown(f"<div style='margin-top: 5px; margin-bottom: -10px;'><b>Atributos:</b> {attr1} / {attr2}</div>", unsafe_allow_html=True)
-                        else:
-                            st.markdown(f"<div style='margin-top: 5px; margin-bottom: -10px;'><b>Atributo:</b> {attr1}</div>", unsafe_allow_html=True)
-                            
-                    elif tipo_real == "Carta": st.markdown(f"<div style='margin-top: 5px; margin-bottom: -10px;'><b>Material:</b> {prod.get('material', 'N/A')}</div>", unsafe_allow_html=True)
-                    elif tipo_real == "BakuCore": st.markdown(f"<div style='margin-top: 5px; margin-bottom: -10px;'><b>Símbolo:</b> {prod.get('simbolo', 'N/A')}</div>", unsafe_allow_html=True)
-                    
-                    if not es_modo_edicion:
-                        en_carrito_normal = sum(1 for item in st.session_state.carrito if item["_id"] == prod["_id"] and item.get("variante") == "normal")
-                        en_carrito_detalle = sum(1 for item in st.session_state.carrito if item["_id"] == prod["_id"] and item.get("variante") == "detalle")
+            for fila_idx in range(0, len(productos_a_mostrar), 3):
+                cols = st.columns(3)
+                for col_idx in range(3):
+                    if fila_idx + col_idx < len(productos_a_mostrar):
+                        prod = productos_a_mostrar[fila_idx + col_idx]
+                        info_img = obtener_foto_mongo(str(prod["_id"]))
                         
-                        if stock_normal > 0:
-                            cu_norm = " c/u" if stock_normal > 1 else ""
-                            st.write(f"🟢 **Perfecta:** ${precio_normal:,.2f}{cu_norm} (Disp: {stock_normal})")
+                        with cols[col_idx]:
+                            st.markdown(f"<div style='min-height: 60px; display: flex; align-items: center; justify-content: flex-start; margin-bottom: 5px;'><h4 style='margin: 0px; font-size: 20px; line-height: 1.2;'>{prod['nombre']}</h4></div>", unsafe_allow_html=True)
                             
-                            if en_carrito_normal == 0:
-                                if st.button("🛒 Añadir", key=f"add_n_{prod['_id']}", use_container_width=True):
-                                    st.session_state.carrito.append({"_id": prod["_id"], "nombre": f"{prod['nombre']}", "precio": precio_normal, "variante": "normal", "tipo": tipo_real})
-                                    guardar_carrito() 
+                            if tipo_busqueda == "Piezas / Detalles 🛠️":
+                                imagenes_del_producto = info_img.get("imagenes_detalle_b64", info_img.get("imagenes_b64", []))
+                            else:
+                                imagenes_del_producto = info_img.get("imagenes_b64", [])
+                                if not imagenes_del_producto: imagenes_del_producto = info_img.get("imagenes_detalle_b64", [])
                                     
-                                    if promo_seleccionada == "🌟 Súper 3x2" and tipo_real not in ["Carta", "BakuCore", "Extra"]:
-                                        eleg = [i for i in st.session_state.carrito if i.get("tipo") not in ["Carta", "BakuCore", "Extra"] and i.get("variante") != "detalle"]
-                                        if len(eleg) % 3 == 2: st.session_state.abrir_modal_3x2 = True
+                            if not imagenes_del_producto and "imagen_b64" in info_img: 
+                                imagenes_del_producto = [info_img["imagen_b64"]]
+                            
+                            if imagenes_del_producto:
+                                html_galeria = '<div class="galeria-container">'
+                                for b64_img in imagenes_del_producto: html_galeria += f'<img src="data:image/jpeg;base64,{b64_img}" class="galeria-img">'
+                                html_galeria += '</div>'
+                                st.markdown(html_galeria, unsafe_allow_html=True)
+                                
+                                if len(imagenes_del_producto) > 1: 
+                                    st.markdown("<div style='text-align: center; color: #aaa; font-size: 13px; margin-top: -5px; margin-bottom: 5px; min-height: 19px;'>👉 Desliza la foto</div>", unsafe_allow_html=True)
+                                else:
+                                    st.markdown("<div style='text-align: center; color: transparent; font-size: 13px; margin-top: -5px; margin-bottom: 5px; min-height: 19px;'>👉 Espacio</div>", unsafe_allow_html=True)
+                                
+                                if st.button("🔍 Ampliar foto", key=f"zoom_{prod['_id']}", use_container_width=True): abrir_zoom(prod['nombre'], imagenes_del_producto)
+                            
+                            stock_normal = prod.get('stock', 0)
+                            precio_normal = prod.get('precio', 0.0)
+                            stock_detalle = prod.get('stock_detalle', 0)
+                            precio_detalle = prod.get('precio_detalle', 0.0)
+                            texto_detalle = prod.get('detalle', "")
+
+                            if texto_detalle and 'stock_detalle' not in prod:
+                                stock_detalle, precio_detalle = stock_normal, precio_normal
+                                stock_normal, precio_normal = 0, 0.0
+                            
+                            tipo_real = prod.get("tipo", "Bakugan")
+                            if tipo_real == "Bakugan" or "atributo" in prod: 
+                                attr1 = prod.get('atributo', 'N/A')
+                                attr2 = prod.get('atributo_2', 'Ninguno')
+                                if attr2 != "Ninguno":
+                                    st.markdown(f"<div style='margin-top: 5px; margin-bottom: 5px; min-height: 25px;'><b>Atributos:</b> {attr1} / {attr2}</div>", unsafe_allow_html=True)
+                                else:
+                                    st.markdown(f"<div style='margin-top: 5px; margin-bottom: 5px; min-height: 25px;'><b>Atributo:</b> {attr1}</div>", unsafe_allow_html=True)
+                                    
+                            elif tipo_real == "Carta": st.markdown(f"<div style='margin-top: 5px; margin-bottom: 5px; min-height: 25px;'><b>Material:</b> {prod.get('material', 'N/A')}</div>", unsafe_allow_html=True)
+                            elif tipo_real == "BakuCore": st.markdown(f"<div style='margin-top: 5px; margin-bottom: 5px; min-height: 25px;'><b>Símbolo:</b> {prod.get('simbolo', 'N/A')}</div>", unsafe_allow_html=True)
+                            
+                            if not es_modo_edicion:
+                                en_carrito_normal = sum(1 for item in st.session_state.carrito if item["_id"] == prod["_id"] and item.get("variante") == "normal")
+                                en_carrito_detalle = sum(1 for item in st.session_state.carrito if item["_id"] == prod["_id"] and item.get("variante") == "detalle")
+                                
+                                if stock_normal > 0:
+                                    cu_norm = " c/u" if stock_normal > 1 else ""
+                                    st.write(f"🟢 **Perfecta:** ${precio_normal:,.2f}{cu_norm} (Disp: {stock_normal})")
+                                    
+                                    if en_carrito_normal == 0:
+                                        if st.button("🛒 Añadir", key=f"add_n_{prod['_id']}", use_container_width=True):
+                                            st.session_state.carrito.append({"_id": prod["_id"], "nombre": f"{prod['nombre']}", "precio": precio_normal, "variante": "normal", "tipo": tipo_real})
+                                            guardar_carrito() 
                                             
-                                    st.rerun()
-                            else: 
-                                # Botón integrado para 'En carrito' deshabilitado
-                                st.button("✅ En carrito", disabled=True, key=f"max_n_{prod['_id']}", use_container_width=True)
-                            
-                        if stock_detalle > 0:
-                            st.markdown(f"<span style='color:#f39c12; font-size: 0.9em;'>⚠️ **Detalle:** {texto_detalle}</span>", unsafe_allow_html=True)
-                            cu_det = " c/u" if stock_detalle > 1 else ""
-                            st.write(f"🟠 **C/Detalle:** ${precio_detalle:,.2f}{cu_det} (Disp: {stock_detalle})")
-                            
-                            if en_carrito_detalle == 0:
-                                if st.button("🛒 Añadir", key=f"add_d_{prod['_id']}", use_container_width=True):
-                                    st.session_state.carrito.append({"_id": prod["_id"], "nombre": f"{prod['nombre']} (Detalle)", "precio": precio_detalle, "variante": "detalle", "tipo": tipo_real})
-                                    guardar_carrito() 
-                                    st.rerun()
-                            else: 
-                                # Botón integrado para 'En carrito' deshabilitado
-                                st.button("✅ En carrito", disabled=True, key=f"max_d_{prod['_id']}", use_container_width=True)
+                                            if promo_seleccionada == "🌟 Súper 3x2" and tipo_real not in ["Carta", "BakuCore", "Extra"]:
+                                                eleg = [i for i in st.session_state.carrito if i.get("tipo") not in ["Carta", "BakuCore", "Extra"] and i.get("variante") != "detalle"]
+                                                if len(eleg) % 3 == 2: st.session_state.abrir_modal_3x2 = True
+                                                    
+                                            st.rerun()
+                                    else: 
+                                        st.button("✅ En carrito", disabled=True, key=f"max_n_{prod['_id']}", use_container_width=True)
+                                    
+                                if stock_detalle > 0:
+                                    st.markdown(f"<span style='color:#f39c12; font-size: 0.9em;'>⚠️ **Detalle:** {texto_detalle}</span>", unsafe_allow_html=True)
+                                    cu_det = " c/u" if stock_detalle > 1 else ""
+                                    st.write(f"🟠 **C/Detalle:** ${precio_detalle:,.2f}{cu_det} (Disp: {stock_detalle})")
+                                    
+                                    if en_carrito_detalle == 0:
+                                        if st.button("🛒 Añadir", key=f"add_d_{prod['_id']}", use_container_width=True):
+                                            st.session_state.carrito.append({"_id": prod["_id"], "nombre": f"{prod['nombre']} (Detalle)", "precio": precio_detalle, "variante": "detalle", "tipo": tipo_real})
+                                            guardar_carrito() 
+                                            st.rerun()
+                                    else: 
+                                        st.button("✅ En carrito", disabled=True, key=f"max_d_{prod['_id']}", use_container_width=True)
 
-                    if es_modo_edicion:
-                        st.markdown('<hr style="margin: 10px 0px; border: none; border-top: 1px solid rgba(255,255,255,0.2);">', unsafe_allow_html=True)
-                        
-                        titulo_expander = "✏️ Editar"
-                        if es_modo_admin_agotados: titulo_expander = "✏️ Editar / Restock"
-                        
-                        with st.expander(titulo_expander):
-                            nuevo_nombre = st.text_input("Nombre del Producto", value=prod['nombre'], key=f"enom_{prod['_id']}")
-                            
-                            idx_tipo = tipos_producto.index(tipo_real) if tipo_real in tipos_producto else 0
-                            nuevo_tipo = st.selectbox("Categoría / Tipo", tipos_producto, index=idx_tipo, key=f"etipo_{prod['_id']}")
-
-                            attr_actual = prod.get('atributo', categorias[1]) 
-                            try:
-                                idx_attr = categorias[1:].index(attr_actual)
-                            except ValueError:
-                                idx_attr = 0
+                            if es_modo_edicion:
+                                st.markdown('<hr style="margin: 10px 0px; border: none; border-top: 1px solid rgba(255,255,255,0.2);">', unsafe_allow_html=True)
                                 
-                            attr2_actual = prod.get('atributo_2', "Ninguno") 
-                            try:
-                                idx_attr2 = (["Ninguno"] + categorias[1:]).index(attr2_actual)
-                            except ValueError:
-                                idx_attr2 = 0
-
-                            c_a1, c_a2 = st.columns(2)
-                            with c_a1: nuevo_atributo = st.selectbox("Atributo", categorias[1:], index=idx_attr, key=f"eattr_{prod['_id']}")
-                            with c_a2: nuevo_atributo_2 = st.selectbox("Atributo 2 (Fusión)", ["Ninguno"] + categorias[1:], index=idx_attr2, key=f"eattr2_{prod['_id']}")
-
-                            np = st.number_input("Precio N.", value=float(precio_normal), step=10.0, key=f"epn_{prod['_id']}")
-                            ns = st.number_input("Stock N.", value=int(stock_normal), step=1, key=f"esn_{prod['_id']}")
-                            ndp = st.number_input("Precio D.", value=float(precio_detalle), step=10.0, key=f"epd_{prod['_id']}")
-                            nds = st.number_input("Stock D.", value=int(stock_detalle), step=1, key=f"esd_{prod['_id']}")
-                            ndtxt = st.text_input("Detalle", value=texto_detalle, key=f"etxt_{prod['_id']}")
-                            
-                            es_prog_ed = st.checkbox("⏳ Programar lanzamiento", value=False, key=f"prog_{prod['_id']}")
-                            fecha_final_ed = None
-                            if es_prog_ed:
-                                c_f, c_h = st.columns(2)
-                                f_ed = c_f.date_input("Fecha", value=hora_qro().date(), key=f"fed_{prod['_id']}")
-                                h_ed = c_h.time_input("Hora", value=hora_qro().time(), key=f"hed_{prod['_id']}")
-                                fecha_final_ed = datetime.combine(f_ed, h_ed)
-                            
-                            if st.button("💾 Guardar", key=f"save_{prod['_id']}", use_container_width=True):
-                                update_data = {
-                                    "nombre": nuevo_nombre, "tipo": nuevo_tipo, "precio": np, "stock": ns, "precio_detalle": ndp, "stock_detalle": nds, "detalle": ndtxt,
-                                    "fecha_lanzamiento": fecha_final_ed
-                                }
+                                titulo_expander = "✏️ Editar"
+                                if es_modo_admin_agotados: titulo_expander = "✏️ Editar / Restock"
                                 
-                                if nuevo_tipo in tipos_con_atributo:
-                                    update_data["atributo"] = nuevo_atributo
-                                    if nuevo_atributo_2 != "Ninguno":
-                                        update_data["atributo_2"] = nuevo_atributo_2
-                                    else:
-                                        update_data["atributo_2"] = "Ninguno"
+                                with st.expander(titulo_expander):
+                                    nuevo_nombre = st.text_input("Nombre del Producto", value=prod['nombre'], key=f"enom_{prod['_id']}")
+                                    
+                                    idx_tipo = tipos_producto.index(tipo_real) if tipo_real in tipos_producto else 0
+                                    nuevo_tipo = st.selectbox("Categoría / Tipo", tipos_producto, index=idx_tipo, key=f"etipo_{prod['_id']}")
+
+                                    attr_actual = prod.get('atributo', categorias[1]) 
+                                    try:
+                                        idx_attr = categorias[1:].index(attr_actual)
+                                    except ValueError:
+                                        idx_attr = 0
                                         
-                                col_productos.update_one({"_id": ObjectId(prod["_id"])}, {"$set": update_data})
-                                forzar_actualizacion()
-                                st.rerun()
-                                
-                        if st.button("🗑️ Eliminar Definitivo", key=f"del_{prod['_id']}", use_container_width=True):
-                            col_productos.delete_one({"_id": ObjectId(prod["_id"])})
-                            forzar_actualizacion()
-                            st.rerun()
+                                    attr2_actual = prod.get('atributo_2', "Ninguno") 
+                                    try:
+                                        idx_attr2 = (["Ninguno"] + categorias[1:]).index(attr2_actual)
+                                    except ValueError:
+                                        idx_attr2 = 0
+
+                                    c_a1, c_a2 = st.columns(2)
+                                    with c_a1: nuevo_atributo = st.selectbox("Atributo", categorias[1:], index=idx_attr, key=f"eattr_{prod['_id']}")
+                                    with c_a2: nuevo_atributo_2 = st.selectbox("Atributo 2 (Fusión)", ["Ninguno"] + categorias[1:], index=idx_attr2, key=f"eattr2_{prod['_id']}")
+
+                                    np = st.number_input("Precio N.", value=float(precio_normal), step=10.0, key=f"epn_{prod['_id']}")
+                                    ns = st.number_input("Stock N.", value=int(stock_normal), step=1, key=f"esn_{prod['_id']}")
+                                    ndp = st.number_input("Precio D.", value=float(precio_detalle), step=10.0, key=f"epd_{prod['_id']}")
+                                    nds = st.number_input("Stock D.", value=int(stock_detalle), step=1, key=f"esd_{prod['_id']}")
+                                    ndtxt = st.text_input("Detalle", value=texto_detalle, key=f"etxt_{prod['_id']}")
+                                    
+                                    es_prog_ed = st.checkbox("⏳ Programar lanzamiento", value=False, key=f"prog_{prod['_id']}")
+                                    fecha_final_ed = None
+                                    if es_prog_ed:
+                                        c_f, c_h = st.columns(2)
+                                        f_ed = c_f.date_input("Fecha", value=hora_qro().date(), key=f"fed_{prod['_id']}")
+                                        h_ed = c_h.time_input("Hora", value=hora_qro().time(), key=f"hed_{prod['_id']}")
+                                        fecha_final_ed = datetime.combine(f_ed, h_ed)
+                                    
+                                    if st.button("💾 Guardar", key=f"save_{prod['_id']}", use_container_width=True):
+                                        update_data = {
+                                            "nombre": nuevo_nombre, "tipo": nuevo_tipo, "precio": np, "stock": ns, "precio_detalle": ndp, "stock_detalle": nds, "detalle": ndtxt,
+                                            "fecha_lanzamiento": fecha_final_ed
+                                        }
+                                        
+                                        if nuevo_tipo in tipos_con_atributo:
+                                            update_data["atributo"] = nuevo_atributo
+                                            if nuevo_atributo_2 != "Ninguno":
+                                                update_data["atributo_2"] = nuevo_atributo_2
+                                            else:
+                                                update_data["atributo_2"] = "Ninguno"
+                                                
+                                        col_productos.update_one({"_id": ObjectId(prod["_id"])}, {"$set": update_data})
+                                        forzar_actualizacion()
+                                        st.rerun()
+                                        
+                                if st.button("🗑️ Eliminar Definitivo", key=f"del_{prod['_id']}", use_container_width=True):
+                                    col_productos.delete_one({"_id": ObjectId(prod["_id"])})
+                                    forzar_actualizacion()
+                                    st.rerun()
+                st.markdown("<div style='margin-bottom: 25px;'></div>", unsafe_allow_html=True)
                             
     if len(productos_filtrados) > st.session_state.limite_items:
         st.markdown("---")
