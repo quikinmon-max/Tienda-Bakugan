@@ -1037,12 +1037,12 @@ else:
             total_piezas_fisicas = sum(p.get("stock", 0) + p.get("stock_detalle", 0) for p in catalogo_ram_entero)
             valor_estimado_total = sum((p.get("stock", 0) * p.get("precio", 0.0)) + (p.get("stock_detalle", 0) * p.get("precio_detalle", 0.0)) for p in catalogo_ram_entero)
             
-            c_m1, c_m2, c_pdf = st.columns([1, 1, 1.5])
+            c_m1, c_m2, c_m3 = st.columns(3)
             c_m1.metric("📦 Publicaciones Totales", total_publicaciones)
             c_m2.metric("🔢 Piezas Físicas", total_piezas_fisicas)
             
-            with c_pdf:
-                st.markdown("<div style='margin-top: 25px;'></div>", unsafe_allow_html=True)
+            with c_m3:
+                st.metric("💰 Valor Inventario", f"${valor_estimado_total:,.2f}")
                 pdf_data = generar_pdf([p for p in catalogo_ram_entero if p.get("stock", 0) > 0 or p.get("stock_detalle", 0) > 0])
                 st.download_button("📥 Descargar Catálogo PDF", data=pdf_data, file_name=f"Catalogo_BakuMarket_{datetime.utcnow().strftime('%Y%m%d')}.pdf", mime="application/pdf", type="primary", use_container_width=True)
                 
