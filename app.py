@@ -972,8 +972,12 @@ else:
 
                 for prod in productos:
                     tipo = prod.get("tipo", "")
-                    imgs = prod.get("imagenes_b64", [])
-                    if not imgs: imgs = prod.get("imagenes_detalle_b64", [])
+                    
+                    # MANDAMOS A TRAER LAS FOTOS REALES DE MONGO
+                    info_img = obtener_foto_mongo(str(prod["_id"]))
+                    imgs = info_img.get("imagenes_b64", [])
+                    if not imgs: imgs = info_img.get("imagenes_detalle_b64", [])
+                    if not imgs and "imagen_b64" in info_img: imgs = [info_img["imagen_b64"]]
                         
                     img_b64 = None
                     if imgs:
@@ -1043,7 +1047,17 @@ else:
             
             with c_m3:
                 st.metric("💰 Valor Inventario", f"${valor_estimado_total:,.2f}")
-                pdf_data = generar_pdf([p for p in catalogo_ram_entero if p.get("stock", 0) > 0 or p.get("stock_detalle", 0) > 0])
+                
+                # --- FILTRO DE STOCK Y TIEMPO PARA EL PDF ---
+                productos_disponibles_ahora = []
+                for p in catalogo_ram_entero:
+                    en_stock = p.get("stock", 0) > 0 or p.get("stock_detalle", 0) > 0
+                    f_lanz = p.get("fecha_lanzamiento")
+                    es_futuro = isinstance(f_lanz, datetime) and f_lanz > hora_qro()
+                    if en_stock and not es_futuro:
+                        productos_disponibles_ahora.append(p)
+                        
+                pdf_data = generar_pdf(productos_disponibles_ahora)
                 st.download_button("📥 Descargar Catálogo PDF", data=pdf_data, file_name=f"Catalogo_BakuMarket_{datetime.utcnow().strftime('%Y%m%d')}.pdf", mime="application/pdf", type="primary", use_container_width=True)
                 
             st.markdown("---")
