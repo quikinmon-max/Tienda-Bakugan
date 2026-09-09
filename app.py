@@ -965,12 +965,12 @@ else:
                 pdf.add_page()
                 pdf.set_font("Arial", size=7)
                 
-                margen_x, margen_y = 5, 5
-                ancho_celda, alto_celda = 40, 35 # Cuadrícula 5x8 (Más altas)
+                margen_x, margen_y = 10, 10
+                ancho_celda, alto_celda = 38, 34 
                 col, fila = 0, 0
                 tipos_foto_2 = ["Bakugan", "Vehículo", "BakuTech", "Trampa", "Armamento", "Deka", "Set de Batalla"]
 
-                for prod in productos:
+                for i, prod in enumerate(productos):
                     tipo = prod.get("tipo", "")
                     
                     info_img = obtener_foto_mongo(str(prod["_id"]))
@@ -981,15 +981,15 @@ else:
                     img_b64 = None
                     if imgs:
                         if tipo in tipos_foto_2 and len(imgs) > 1:
-                            img_b64 = imgs[1]
+                            img_b64 = imgs[1] 
                         else:
-                            img_b64 = imgs[0]
+                            img_b64 = imgs[0] 
 
                     x = margen_x + (col * ancho_celda)
                     y = margen_y + (fila * alto_celda)
 
                     pdf.set_draw_color(200, 200, 200)
-                    pdf.rect(x, y, ancho_celda - 2, alto_celda - 2)
+                    pdf.rect(x, y, ancho_celda, alto_celda)
 
                     if img_b64:
                         try:
@@ -997,8 +997,8 @@ else:
                             with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as tmp_file:
                                 tmp_file.write(img_data)
                                 tmp_path = tmp_file.name
-                            # Foto más grande (32x22mm)
-                            pdf.image(tmp_path, x=x+3, y=y+2, w=32, h=22)
+                            
+                            pdf.image(tmp_path, x=x+2, y=y+2, w=34, h=24)
                             os.remove(tmp_path)
                         except:
                             pass
@@ -1007,15 +1007,15 @@ else:
                     nombre = prod.get("nombre", "")[:30]
                     nombre_limpio = nombre.encode('latin-1', 'ignore').decode('latin-1')
                     
-                    pdf.set_xy(x, y + 26)
+                    pdf.set_xy(x, y + 28)
                     pdf.set_font("Arial", 'B', 7)
-                    pdf.cell(ancho_celda - 2, 4, nombre_limpio, align='C')
+                    pdf.cell(ancho_celda, 4, nombre_limpio, align='C')
 
                     col += 1
                     if col == 5:
                         col = 0
                         fila += 1
-                        if fila == 8: # Salto de página a las 8 filas
+                        if fila == 8 and i < len(productos) - 1: # Evita la hoja final en blanco
                             fila = 0
                             pdf.add_page()
                             
