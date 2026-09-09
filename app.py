@@ -8,6 +8,9 @@ from PIL import Image, ImageOps, ImageFile, ImageDraw, ImageFont
 import io
 from bson.objectid import ObjectId
 from collections import defaultdict 
+from fpdf import FPDF
+import tempfile
+import os
 
 # --- BLINDAJE PARA FOTOS PESADAS ---
 ImageFile.LOAD_TRUNCATED_IMAGES = True
@@ -778,7 +781,6 @@ elif vista_admin == "➕ Agregar Producto":
         else:
             st.error("Falta el nombre, subir foto o asignar precio.")
 
-# --- SECCIÓN VER APARTADOS MODIFICADA CON LISTA COMPACTA ---
 elif vista_admin == "📋 Ver Apartados":
     st.title("📋 Registro de Clientes y Apartados")
     todos_los_apartados = list(col_apartados.find({}))
@@ -956,21 +958,101 @@ else:
     if es_modo_edicion:
         if es_modo_admin_catalogo:
             st.title("🛠️ Administrar Catálogo e Inventario")
+            
+            # --- MOTOR GENERADOR DE PDF ---
+            def generar_pdf(productos):
+                pdf = FPDF(orientation='P', unit='mm', format='A4')
+                pdf.add_page()
+                pdf.set_font("Arial", size=6)
+                
+                margen_x, margen_y = 5, 5
+                ancho_celda, alto_celda = 40, 28
+                col, fila = 0, 0
+                tipos_foto_2 = ["Bakugan", "Vehículo", "BakuTech", "Trampa", "Armamento", "Deka", "Set de Batalla"]
+
+                for prod in productos:
+                    tipo = prod.get("tipo", "")
+                    imgs = prod.get("imagenes_b64", [])
+                    if not imgs: imgs = prod.get("imagenes_detalle_b64", [])
+                        
+                    img_b64 = None
+                    if imgs:
+                        if tipo in tipos_foto_2 and len(imgs) > 1:
+                            img_b64 = imgs[1] # Extrae la segunda foto
+                        else:
+                            img_b64 = imgs[0] # Extrae la primera foto
+
+                    x = margen_x + (col * ancho_celda)
+                    y = margen_y + (fila * alto_celda)
+
+                    pdf.set_draw_color(200, 200, 200)
+                    pdf.rect(x, y, ancho_celda - 2, alto_celda - 2) # Marco de la tarjeta
+
+                    if img_b64:
+                        try:
+                            img_data = base64.b64decode(img_b64)
+                            with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as tmp_file:
+                                tmp_file.write(img_data)
+                                tmp_path = tmp_file.name
+                            # Ajuste de foto para que quepa el texto abajo
+                            pdf.image(tmp_path, x=x+4, y=y+1, w=30, h=19)
+                            os.remove(tmp_path)
+                        except:
+                            pass
+
+                    # Textos (Nombre y Atributo/Precio)
+                    nombre = prod.get("nombre", "")[:28]
+                    attr = prod.get("atributo", prod.get("material", prod.get("simbolo", "")))
+                    precio = prod.get("precio", 0.0)
+                    
+                    pdf.set_xy(x, y + 20.5)
+                    pdf.set_font("Arial", 'B', 6)
+                    pdf.cell(ancho_celda - 2, 3, nombre, align='C')
+                    
+                    pdf.set_xy(x, y + 23.5)
+                    pdf.set_font("Arial", '', 6)
+                    pdf.cell(ancho_celda - 2, 3, f"{attr} | ${precio:,.2f}", align='C')
+
+                    col += 1
+                    if col == 5:
+                        col = 0
+                        fila += 1
+                        if fila == 10:
+                            fila = 0
+                            pdf.add_page()
+                            
+                tmp_pdf = tempfile.mktemp(suffix=".pdf")
+                pdf.output(tmp_pdf)
+                with open(tmp_pdf, "rb") as f:
+                    pdf_bytes = f.read()
+                os.remove(tmp_pdf)
+                return pdf_bytes
+
+            total_publicaciones = len(catalogo_ram_entero)
+            total_piezas_fisicas = sum(p.get("stock", 0) + p.get("stock_detalle", 0) for p in catalogo_ram_entero)
+            valor_estimado_total = sum((p.get("stock", 0) * p.get("precio", 0.0)) + (p.get("stock_detalle", 0) * p.get("precio_detalle", 0.0)) for p in catalogo_ram_entero)
+            
+            c_m1, c_m2, c_pdf = st.columns([1, 1, 1.5])
+            c_m1.metric("📦 Publicaciones Totales", total_publicaciones)
+            c_m2.metric("🔢 Piezas Físicas", total_piezas_fisicas)
+            
+            with c_pdf:
+                st.markdown("<div style='margin-top: 25px;'></div>", unsafe_allow_html=True)
+                pdf_data = generar_pdf([p for p in catalogo_ram_entero if p.get("stock", 0) > 0 or p.get("stock_detalle", 0) > 0])
+                st.download_button("📥 Descargar Catálogo PDF", data=pdf_data, file_name=f"Catalogo_BakuMarket_{datetime.utcnow().strftime('%Y%m%d')}.pdf", mime="application/pdf", type="primary", use_container_width=True)
+                
+            st.markdown("---")
+            busqueda_texto = st.text_input("🔍 Buscar pieza por nombre...")
+
         elif es_modo_admin_agotados:
             st.title("❌ Piezas Agotadas (Restock)")
+            st.markdown("---")
+            busqueda_texto = st.text_input("🔍 Buscar pieza por nombre...")
         elif es_modo_admin_programados:
             st.title("⏳ Drops Programados")
+            st.markdown("---")
+            busqueda_texto = st.text_input("🔍 Buscar pieza por nombre...")
             
-        total_publicaciones = len(catalogo_ram_entero)
-        total_piezas_fisicas = sum(p.get("stock", 0) + p.get("stock_detalle", 0) for p in catalogo_ram_entero)
-        valor_estimado_total = sum((p.get("stock", 0) * p.get("precio", 0.0)) + (p.get("stock_detalle", 0) * p.get("precio_detalle", 0.0)) for p in catalogo_ram_entero)
-        
-        col_m1, col_m2, col_m3 = st.columns(3)
-        col_m1.metric("📦 Publicaciones Totales", total_publicaciones)
-        col_m2.metric("🔢 Piezas Físicas", total_piezas_fisicas)
-        col_m3.metric("💰 Valor Inventario", f"${valor_estimado_total:,.2f}")
-        st.markdown("---")
-        busqueda_texto = st.text_input("🔍 Buscar pieza por nombre...")
     else:
         # --- MENÚ DE SELECCIÓN DE PROMOS (MUTUAMENTE EXCLUSIVAS) ---
         texto_default = "Ninguna / Solo Envío Gratis" if config_promos.get("envio_gratis", {}).get("activa", False) else "Ninguna"
