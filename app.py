@@ -1005,13 +1005,18 @@ else:
                     attr = prod.get("atributo", prod.get("material", prod.get("simbolo", "")))
                     precio = prod.get("precio", 0.0)
                     
+                    # --- FILTRO ANTI-ERRORES DE UNICODE (QUITA EMOJIS Y CARACTERES RAROS) ---
+                    nombre_limpio = nombre.encode('latin-1', 'ignore').decode('latin-1')
+                    attr_limpio = attr.encode('latin-1', 'ignore').decode('latin-1')
+                    texto_abajo = f"{attr_limpio} | ${precio:,.2f}"
+                    
                     pdf.set_xy(x, y + 20.5)
                     pdf.set_font("Arial", 'B', 6)
-                    pdf.cell(ancho_celda - 2, 3, nombre, align='C')
+                    pdf.cell(ancho_celda - 2, 3, nombre_limpio, align='C')
                     
                     pdf.set_xy(x, y + 23.5)
                     pdf.set_font("Arial", '', 6)
-                    pdf.cell(ancho_celda - 2, 3, f"{attr} | ${precio:,.2f}", align='C')
+                    pdf.cell(ancho_celda - 2, 3, texto_abajo, align='C')
 
                     col += 1
                     if col == 5:
