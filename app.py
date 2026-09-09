@@ -963,17 +963,16 @@ else:
             def generar_pdf(productos):
                 pdf = FPDF(orientation='P', unit='mm', format='A4')
                 pdf.add_page()
-                pdf.set_font("Arial", size=6)
+                pdf.set_font("Arial", size=7)
                 
                 margen_x, margen_y = 5, 5
-                ancho_celda, alto_celda = 40, 28
+                ancho_celda, alto_celda = 40, 35 # Cuadrícula 5x8 (Más altas)
                 col, fila = 0, 0
                 tipos_foto_2 = ["Bakugan", "Vehículo", "BakuTech", "Trampa", "Armamento", "Deka", "Set de Batalla"]
 
                 for prod in productos:
                     tipo = prod.get("tipo", "")
                     
-                    # MANDAMOS A TRAER LAS FOTOS REALES DE MONGO
                     info_img = obtener_foto_mongo(str(prod["_id"]))
                     imgs = info_img.get("imagenes_b64", [])
                     if not imgs: imgs = info_img.get("imagenes_detalle_b64", [])
@@ -982,15 +981,15 @@ else:
                     img_b64 = None
                     if imgs:
                         if tipo in tipos_foto_2 and len(imgs) > 1:
-                            img_b64 = imgs[1] # Extrae la segunda foto
+                            img_b64 = imgs[1]
                         else:
-                            img_b64 = imgs[0] # Extrae la primera foto
+                            img_b64 = imgs[0]
 
                     x = margen_x + (col * ancho_celda)
                     y = margen_y + (fila * alto_celda)
 
                     pdf.set_draw_color(200, 200, 200)
-                    pdf.rect(x, y, ancho_celda - 2, alto_celda - 2) # Marco de la tarjeta
+                    pdf.rect(x, y, ancho_celda - 2, alto_celda - 2)
 
                     if img_b64:
                         try:
@@ -998,35 +997,25 @@ else:
                             with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as tmp_file:
                                 tmp_file.write(img_data)
                                 tmp_path = tmp_file.name
-                            # Ajuste de foto para que quepa el texto abajo
-                            pdf.image(tmp_path, x=x+4, y=y+1, w=30, h=19)
+                            # Foto más grande (32x22mm)
+                            pdf.image(tmp_path, x=x+3, y=y+2, w=32, h=22)
                             os.remove(tmp_path)
                         except:
                             pass
 
-                    # Textos (Nombre y Atributo/Precio)
-                    nombre = prod.get("nombre", "")[:28]
-                    attr = prod.get("atributo", prod.get("material", prod.get("simbolo", "")))
-                    precio = prod.get("precio", 0.0)
-                    
-                    # --- FILTRO ANTI-ERRORES DE UNICODE (QUITA EMOJIS Y CARACTERES RAROS) ---
+                    # Solo Nombre (limpio de emojis)
+                    nombre = prod.get("nombre", "")[:30]
                     nombre_limpio = nombre.encode('latin-1', 'ignore').decode('latin-1')
-                    attr_limpio = attr.encode('latin-1', 'ignore').decode('latin-1')
-                    texto_abajo = f"{attr_limpio} | ${precio:,.2f}"
                     
-                    pdf.set_xy(x, y + 20.5)
-                    pdf.set_font("Arial", 'B', 6)
-                    pdf.cell(ancho_celda - 2, 3, nombre_limpio, align='C')
-                    
-                    pdf.set_xy(x, y + 23.5)
-                    pdf.set_font("Arial", '', 6)
-                    pdf.cell(ancho_celda - 2, 3, texto_abajo, align='C')
+                    pdf.set_xy(x, y + 26)
+                    pdf.set_font("Arial", 'B', 7)
+                    pdf.cell(ancho_celda - 2, 4, nombre_limpio, align='C')
 
                     col += 1
                     if col == 5:
                         col = 0
                         fila += 1
-                        if fila == 10:
+                        if fila == 8: # Salto de página a las 8 filas
                             fila = 0
                             pdf.add_page()
                             
@@ -1048,17 +1037,31 @@ else:
             with c_m3:
                 st.metric("💰 Valor Inventario", f"${valor_estimado_total:,.2f}")
                 
-                # --- FILTRO DE STOCK Y TIEMPO PARA EL PDF ---
-                productos_disponibles_ahora = []
-                for p in catalogo_ram_entero:
-                    en_stock = p.get("stock", 0) > 0 or p.get("stock_detalle", 0) > 0
-                    f_lanz = p.get("fecha_lanzamiento")
-                    es_futuro = isinstance(f_lanz, datetime) and f_lanz > hora_qro()
-                    if en_stock and not es_futuro:
-                        productos_disponibles_ahora.append(p)
-                        
-                pdf_data = generar_pdf(productos_disponibles_ahora)
-                st.download_button("📥 Descargar Catálogo PDF", data=pdf_data, file_name=f"Catalogo_BakuMarket_{datetime.utcnow().strftime('%Y%m%d')}.pdf", mime="application/pdf", type="primary", use_container_width=True)
+            # --- SEPARACIÓN DE PDFS (FIGURAS VS OTROS) ---
+            productos_disponibles_ahora = []
+            for p in catalogo_ram_entero:
+                en_stock = p.get("stock", 0) > 0 or p.get("stock_detalle", 0) > 0
+                f_lanz = p.get("fecha_lanzamiento")
+                es_futuro = isinstance(f_lanz, datetime) and f_lanz > hora_qro()
+                if en_stock and not es_futuro:
+                    productos_disponibles_ahora.append(p)
+                    
+            tipos_figuras = ["Bakugan", "Vehículo", "BakuTech", "Trampa", "Armamento", "Deka", "Set de Batalla"]
+            prods_figuras = [p for p in productos_disponibles_ahora if p.get("tipo", "") in tipos_figuras]
+            prods_otros = [p for p in productos_disponibles_ahora if p.get("tipo", "") not in tipos_figuras]
+
+            st.markdown("<div style='margin-bottom: 10px;'></div>", unsafe_allow_html=True)
+            c_pdf1, c_pdf2 = st.columns(2)
+            with c_pdf1:
+                with st.popover("📥 PDF Figuras Principales", use_container_width=True):
+                    st.markdown("Presiona para generar el PDF (Solo Bakugans, Trampas, Armamentos, etc.)")
+                    pdf_data_1 = generar_pdf(prods_figuras)
+                    st.download_button("✅ Descargar PDF Figuras", data=pdf_data_1, file_name=f"Figuras_BakuMarket_{datetime.utcnow().strftime('%Y%m%d')}.pdf", mime="application/pdf", type="primary", use_container_width=True)
+            with c_pdf2:
+                with st.popover("📥 PDF Cartas y Extras", use_container_width=True):
+                    st.markdown("Presiona para generar el PDF (Solo Cartas, BakuCores, Extras)")
+                    pdf_data_2 = generar_pdf(prods_otros)
+                    st.download_button("✅ Descargar PDF Extras", data=pdf_data_2, file_name=f"Extras_BakuMarket_{datetime.utcnow().strftime('%Y%m%d')}.pdf", mime="application/pdf", type="primary", use_container_width=True)
                 
             st.markdown("---")
             busqueda_texto = st.text_input("🔍 Buscar pieza por nombre...")
