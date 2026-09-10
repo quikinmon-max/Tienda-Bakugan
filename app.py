@@ -962,6 +962,7 @@ else:
             # --- MOTOR GENERADOR DE PDF ---
             def generar_pdf(productos):
                 pdf = FPDF(orientation='P', unit='mm', format='A4')
+                pdf.set_auto_page_break(auto=False, margin=0)
                 pdf.add_page()
                 pdf.set_font("Arial", size=7)
                 
@@ -979,7 +980,7 @@ else:
                     if not imgs and "imagen_b64" in info_img: imgs = [info_img["imagen_b64"]]
                         
                     img_b64 = None
-                    if imgs:
+                    if imgs and len(imgs) > 0:
                         if tipo in tipos_foto_2 and len(imgs) > 1:
                             img_b64 = imgs[1] 
                         else:
@@ -994,13 +995,13 @@ else:
                     if img_b64:
                         try:
                             img_data = base64.b64decode(img_b64)
-                            with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as tmp_file:
-                                tmp_file.write(img_data)
-                                tmp_path = tmp_file.name
+                            fd, tmp_path = tempfile.mkstemp(suffix=".jpg")
+                            with os.fdopen(fd, 'wb') as f:
+                                f.write(img_data)
                             
                             pdf.image(tmp_path, x=x+2, y=y+2, w=34, h=24)
                             os.remove(tmp_path)
-                        except:
+                        except Exception:
                             pass
 
                     # Solo Nombre (limpio de emojis)
@@ -1015,11 +1016,12 @@ else:
                     if col == 5:
                         col = 0
                         fila += 1
-                        if fila == 8 and i < len(productos) - 1: # Evita la hoja final en blanco
+                        if fila == 8 and i < len(productos) - 1:
                             fila = 0
                             pdf.add_page()
                             
-                tmp_pdf = tempfile.mktemp(suffix=".pdf")
+                fd, tmp_pdf = tempfile.mkstemp(suffix=".pdf")
+                os.close(fd)
                 pdf.output(tmp_pdf)
                 with open(tmp_pdf, "rb") as f:
                     pdf_bytes = f.read()
