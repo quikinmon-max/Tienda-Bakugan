@@ -995,9 +995,18 @@ else:
                     if img_b64:
                         try:
                             img_data = base64.b64decode(img_b64)
+                            img_pil = Image.open(io.BytesIO(img_data))
+                            if img_pil.mode in ("RGBA", "P"): img_pil = img_pil.convert("RGB")
+                            
+                            # --- MAGIA ANTI-APACHURRADO ---
+                            img_pil.thumbnail((340, 240))
+                            fondo_blanco = Image.new('RGB', (340, 240), (255, 255, 255))
+                            offset = ((340 - img_pil.size[0]) // 2, (240 - img_pil.size[1]) // 2)
+                            fondo_blanco.paste(img_pil, offset)
+                            
                             fd, tmp_path = tempfile.mkstemp(suffix=".jpg")
-                            with os.fdopen(fd, 'wb') as f:
-                                f.write(img_data)
+                            os.close(fd)
+                            fondo_blanco.save(tmp_path, format="JPEG", quality=90)
                             
                             pdf.image(tmp_path, x=x+2, y=y+2, w=34, h=24)
                             os.remove(tmp_path)
