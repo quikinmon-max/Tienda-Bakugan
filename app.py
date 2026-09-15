@@ -1154,6 +1154,29 @@ else:
             st.markdown("---")
             busqueda_texto = st.text_input("🔍 Buscar pieza por nombre...")
 
+            # --- BOTÓN DE ACTUALIZACIÓN MASIVA (VEHÍCULOS) ---
+            if tipo_busqueda == "Vehículos 🏎️":
+                st.markdown("<div style='background: rgba(231, 76, 60, 0.1); padding: 15px; border-radius: 8px; border-left: 4px solid #e74c3c; margin-bottom: 15px;'>", unsafe_allow_html=True)
+                st.markdown("#### 🏎️ Cambiar precio a TODOS los Vehículos")
+                st.markdown("Esto cambiará el precio de **todos** los vehículos en tu base de datos al mismo tiempo.")
+                c_mas1, c_mas2, c_mas3 = st.columns(3)
+                with c_mas1:
+                    nuevo_p_masivo = st.number_input("Precio Normal Parejo ($)", min_value=0.0, step=10.0, value=250.0)
+                with c_mas2:
+                    nuevo_p_det_masivo = st.number_input("Precio Detalle Parejo ($)", min_value=0.0, step=10.0, value=150.0)
+                with c_mas3:
+                    st.markdown("<br>", unsafe_allow_html=True)
+                    if st.button("🚀 Aplicar a todos los Vehículos", type="primary", use_container_width=True):
+                        with st.spinner("Modificando base de datos..."):
+                            col_productos.update_many(
+                                {"tipo": "Vehículo"},
+                                {"$set": {"precio": nuevo_p_masivo, "precio_detalle": nuevo_p_det_masivo}}
+                            )
+                            forzar_actualizacion()
+                        st.success("¡Todos los vehículos fueron actualizados!")
+                        st.rerun()
+                st.markdown("</div>", unsafe_allow_html=True)
+
         elif es_modo_admin_agotados:
             st.title("❌ Piezas Agotadas (Restock)")
             st.markdown("---")
