@@ -459,20 +459,41 @@ st.sidebar.markdown("<div style='height: 400px;'></div>", unsafe_allow_html=True
 # ---------------- LÓGICA DE MINIATURAS GLOBALES ----------------
 catalogo_ram_entero = cargar_catalogo_textos()
 
-def buscar_miniatura(prod_name):
-    """Busca en el catálogo la foto de la pieza comprada y devuelve la segunda (abierta) si es Bakugan."""
+def buscar_miniatura_data(prod_name_full):
+    """Busca exacto por nombre + atributo para no confundir piezas, y devuelve foto, nombre y galería completa para hacer zoom."""
     tipos_figuras = ["Bakugan", "Vehículo", "BakuTech", "Trampa", "Armamento", "Deka", "Set de Batalla"]
+    best_match = None
+    max_len = 0
+    
     for p in catalogo_ram_entero:
-        # Verifica si el nombre base del producto en DB está en el string de venta
-        if prod_name.startswith(p["nombre"]):
-            info = obtener_foto_mongo(str(p["_id"]))
-            imgs = info.get("imagenes_b64", []) or info.get("imagenes_detalle_b64", [])
-            if not imgs and "imagen_b64" in info: imgs = [info["imagen_b64"]]
-            if imgs:
-                if p.get("tipo", "") in tipos_figuras and len(imgs) > 1:
-                    return imgs[1] # Devuelve la segunda foto
-                return imgs[0]
-    return None
+        tipo_prod = p.get("tipo", "Bakugan")
+        info_extra = ""
+        if "atributo" in p and tipo_prod in tipos_figuras:
+            attr1 = p.get("atributo", "")
+            attr2 = p.get("atributo_2", "Ninguno")
+            info_extra = f"{attr1} / {attr2}" if attr2 != "Ninguno" else attr1
+        elif "material" in p and tipo_prod == "Carta":
+            info_extra = p.get('material', '')
+        elif "simbolo" in p and tipo_prod == "BakuCore":
+            info_extra = p.get('simbolo', '')
+        
+        # Blindaje: Debe coincidir el nombre exacto y el atributo exacto para no mezclar colores
+        if p['nombre'] in prod_name_full and (info_extra in prod_name_full or not info_extra):
+            if len(p['nombre']) > max_len:
+                max_len = len(p['nombre'])
+                best_match = (p, tipo_prod)
+                
+    if best_match:
+        p, tipo_prod = best_match
+        info = obtener_foto_mongo(str(p["_id"]))
+        imgs = info.get("imagenes_b64", []) or info.get("imagenes_detalle_b64", [])
+        if not imgs and "imagen_b64" in info: imgs = [info["imagen_b64"]]
+        if imgs:
+            if tipo_prod in tipos_figuras and len(imgs) > 1:
+                return imgs[1], p['nombre'], imgs # Segunda foto abierta
+            return imgs[0], p['nombre'], imgs
+            
+    return None, None, None
 
 if vista_admin == "🎁 Gestor de Promociones":
     st.title("🎁 Gestor de Promociones")
@@ -627,10 +648,19 @@ elif vista_admin == "📊 Finanzas y Ventas":
                 st.markdown(f'<div class="tarjeta-cliente" style="margin-bottom: 5px;"><div style="font-size: 14px; margin-bottom: 5px;"><span style="color: #aaa;">📅 {v["fecha_venta"].strftime("%d/%m/%Y")}</span> &nbsp;|&nbsp; 👤 <b>{v["cliente"]}</b></div><div style="font-size: 15px; margin-bottom: 5px;">💰 <b>Ganancia Neta: <span style="color: #2ecc71;">${neta:,.2f}</span></b> &nbsp;|&nbsp; 📦 Cobro Envío: <span style="color: #f1c40f;">${cobro_envio:,.2f}</span> &nbsp;|&nbsp; 📉 Costo Guía: <span style="color: #e74c3c;">${gasto_envio:,.2f}</span>{html_deuda}</div><div style="font-size: 13px; color: #ccc;">📝 <i>Obs: {v.get("observaciones", "Ninguna")}</i></div></div>', unsafe_allow_html=True)
                 
                 with st.expander("📦 Ver piezas vendidas"):
-                    for p_nombre in v.get("productos", []):
-                        thumb = buscar_miniatura(p_nombre)
-                        img_html = f"<img src='data:image/jpeg;base64,{thumb}' style='width: 25px; height: 25px; object-fit: cover; border-radius: 4px; vertical-align: middle; margin-right: 8px;'>" if thumb else "&bull; "
-                        st.markdown(f"<div style='margin-left: 10px; font-size: 14px; color: #ddd; margin-bottom: 5px;'>{img_html}{p_nombre}</div>", unsafe_allow_html=True)
+                    for idx_p, p_nombre in enumerate(v.get("productos", [])):
+                        thumb, base_name, all_imgs = buscar_miniatura_data(p_nombre)
+                        if thumb:
+                            c_img, c_txt, c_btn = st.columns([1, 10, 2])
+                            with c_img:
+                                st.markdown(f"<img src='data:image/jpeg;base64,{thumb}' style='width: 35px; height: 35px; object-fit: cover; border-radius: 4px;'>", unsafe_allow_html=True)
+                            with c_txt:
+                                st.markdown(f"<div style='margin-top: 8px; font-size: 14px; color: #ddd;'>{p_nombre}</div>", unsafe_allow_html=True)
+                            with c_btn:
+                                if st.button("🔍 Ver", key=f"zv_{v['_id']}_{idx_p}"):
+                                    abrir_zoom(base_name, all_imgs)
+                        else:
+                            st.markdown(f"<div style='margin-left: 10px; font-size: 14px;'>&bull; {p_nombre}</div>", unsafe_allow_html=True)
                 
                 with st.expander("✏️ Editar Venta / Liquidar Deuda", expanded=False):
                     c1, c2, c3, c4 = st.columns([1, 1, 1, 2])
@@ -707,13 +737,23 @@ elif vista_admin == "📊 Finanzas y Ventas":
                 with st.expander(f"📦 Ver historial completo de piezas ({data['total_piezas']})"):
                     pedidos_ordenados = sorted(data["historial_pedidos"], key=lambda x: x["fecha"], reverse=True)
                     
-                    for pedido in pedidos_ordenados:
+                    for p_idx, pedido in enumerate(pedidos_ordenados):
                         fecha_str = pedido["fecha"].strftime("%d/%m/%Y")
                         st.markdown(f"<div style='margin-top: 8px; font-weight: bold; color: #3498db;'>📅 Compra del {fecha_str}</div>", unsafe_allow_html=True)
-                        for p_nombre in pedido["productos"]:
-                            thumb = buscar_miniatura(p_nombre)
-                            img_html = f"<img src='data:image/jpeg;base64,{thumb}' style='width: 25px; height: 25px; object-fit: cover; border-radius: 4px; vertical-align: middle; margin-right: 8px;'>" if thumb else "&bull; "
-                            st.markdown(f"<div style='margin-left: 15px; font-size: 14px; color: #ddd; margin-bottom: 5px;'>{img_html}{p_nombre}</div>", unsafe_allow_html=True)
+                        
+                        for idx_prod, p_nombre in enumerate(pedido["productos"]):
+                            thumb, base_name, all_imgs = buscar_miniatura_data(p_nombre)
+                            if thumb:
+                                c_img, c_txt, c_btn = st.columns([1, 10, 2])
+                                with c_img:
+                                    st.markdown(f"<img src='data:image/jpeg;base64,{thumb}' style='width: 35px; height: 35px; object-fit: cover; border-radius: 4px;'>", unsafe_allow_html=True)
+                                with c_txt:
+                                    st.markdown(f"<div style='margin-top: 8px; font-size: 14px; color: #ddd;'>{p_nombre}</div>", unsafe_allow_html=True)
+                                with c_btn:
+                                    if st.button("🔍 Ver", key=f"zc_{tel}_{p_idx}_{idx_prod}"):
+                                        abrir_zoom(base_name, all_imgs)
+                            else:
+                                st.markdown(f"<div style='margin-left: 15px; font-size: 14px; color: #ddd;'>&bull; {p_nombre}</div>", unsafe_allow_html=True)
                         st.markdown("<hr style='margin: 5px 0px; border-top: 1px dashed #555;'>", unsafe_allow_html=True)
 
     with tab_penalizaciones:
