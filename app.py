@@ -832,28 +832,29 @@ elif vista_admin == "➕ Agregar Producto":
         hora_lanz = c_lan2.time_input("Hora exacta (Hora Centro)")
         fecha_final_prog = datetime.combine(fecha_lanz, hora_lanz)
     
-    if st.button("Subir Producto al Catálogo"):
+    if st.button("Subir Producto al Catálogo", type="primary"):
         if nombre and (imagenes_subidas or imagenes_detalle_subidas) and (precio > 0 or precio_detalle > 0):
-            lista_imagenes_b64 = [comprimir_imagen(img) for img in imagenes_subidas[:6]] if imagenes_subidas else []
-            lista_imagenes_detalle_b64 = [comprimir_imagen(img) for img in imagenes_detalle_subidas[:6]] if imagenes_detalle_subidas else []
-            if con_detalle and not lista_imagenes_detalle_b64: lista_imagenes_detalle_b64 = lista_imagenes_b64
-                
-            nuevo_prod = {
-                "tipo": tipo_prod, "nombre": nombre, "precio": precio, "stock": stock,
-                "precio_detalle": precio_detalle, "stock_detalle": stock_detalle, "detalle": detalle_prod,
-                "imagenes_b64": lista_imagenes_b64, "imagenes_detalle_b64": lista_imagenes_detalle_b64,
-                "fecha_lanzamiento": fecha_final_prog
-            }
-            if tipo_prod in tipos_con_atributo: 
-                nuevo_prod["atributo"] = atributo_form
-                if atributo_2_form != "Ninguno":
-                    nuevo_prod["atributo_2"] = atributo_2_form
+            with st.spinner("⏳ Subiendo pieza a la base de datos... ¡No recargues la página!"):
+                lista_imagenes_b64 = [comprimir_imagen(img) for img in imagenes_subidas[:6]] if imagenes_subidas else []
+                lista_imagenes_detalle_b64 = [comprimir_imagen(img) for img in imagenes_detalle_subidas[:6]] if imagenes_detalle_subidas else []
+                if con_detalle and not lista_imagenes_detalle_b64: lista_imagenes_detalle_b64 = lista_imagenes_b64
                     
-            elif tipo_prod == "Carta": nuevo_prod["material"] = material_form
-            elif tipo_prod == "BakuCore": nuevo_prod["simbolo"] = simbolo_form
-                
-            col_productos.insert_one(nuevo_prod)
-            forzar_actualizacion()
+                nuevo_prod = {
+                    "tipo": tipo_prod, "nombre": nombre, "precio": precio, "stock": stock,
+                    "precio_detalle": precio_detalle, "stock_detalle": stock_detalle, "detalle": detalle_prod,
+                    "imagenes_b64": lista_imagenes_b64, "imagenes_detalle_b64": lista_imagenes_detalle_b64,
+                    "fecha_lanzamiento": fecha_final_prog
+                }
+                if tipo_prod in tipos_con_atributo: 
+                    nuevo_prod["atributo"] = atributo_form
+                    if atributo_2_form != "Ninguno":
+                        nuevo_prod["atributo_2"] = atributo_2_form
+                        
+                elif tipo_prod == "Carta": nuevo_prod["material"] = material_form
+                elif tipo_prod == "BakuCore": nuevo_prod["simbolo"] = simbolo_form
+                    
+                col_productos.insert_one(nuevo_prod)
+                forzar_actualizacion()
             st.success(f"¡{nombre} subido con éxito!")
             st.rerun() 
         else:
@@ -1159,6 +1160,19 @@ else:
             busqueda_texto = st.text_input("🔍 Buscar pieza por nombre...")
         elif es_modo_admin_programados:
             st.title("⏳ Drops Programados")
+            
+            c_btn_liberar, _ = st.columns([1, 2])
+            with c_btn_liberar:
+                if st.button("🚀 Liberar TODO el inventario programado AHORA", type="primary", use_container_width=True, help="Esto publicará instantáneamente todas las piezas que estaban programadas para el futuro."):
+                    with st.spinner("Liberando piezas..."):
+                        col_productos.update_many(
+                            {"fecha_lanzamiento": {"$gt": hora_qro()}}, 
+                            {"$set": {"fecha_lanzamiento": None}}
+                        )
+                        forzar_actualizacion()
+                    st.success("¡Todo el inventario programado ya es público!")
+                    st.rerun()
+
             st.markdown("---")
             busqueda_texto = st.text_input("🔍 Buscar pieza por nombre...")
             
@@ -1688,6 +1702,7 @@ else:
                                 
                                 titulo_expander = "✏️ Editar"
                                 if es_modo_admin_agotados: titulo_expander = "✏️ Editar / Restock"
+                                
                                 
                                 with st.expander(titulo_expander):
                                     nuevo_nombre = st.text_input("Nombre del Producto", value=prod['nombre'], key=f"enom_{prod['_id']}")
