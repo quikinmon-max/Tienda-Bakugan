@@ -456,6 +456,24 @@ if es_admin_url:
 
 st.sidebar.markdown("<div style='height: 400px;'></div>", unsafe_allow_html=True)
 
+# ---------------- LÓGICA DE MINIATURAS GLOBALES ----------------
+catalogo_ram_entero = cargar_catalogo_textos()
+
+def buscar_miniatura(prod_name):
+    """Busca en el catálogo la foto de la pieza comprada y devuelve la segunda (abierta) si es Bakugan."""
+    tipos_figuras = ["Bakugan", "Vehículo", "BakuTech", "Trampa", "Armamento", "Deka", "Set de Batalla"]
+    for p in catalogo_ram_entero:
+        # Verifica si el nombre base del producto en DB está en el string de venta
+        if prod_name.startswith(p["nombre"]):
+            info = obtener_foto_mongo(str(p["_id"]))
+            imgs = info.get("imagenes_b64", []) or info.get("imagenes_detalle_b64", [])
+            if not imgs and "imagen_b64" in info: imgs = [info["imagen_b64"]]
+            if imgs:
+                if p.get("tipo", "") in tipos_figuras and len(imgs) > 1:
+                    return imgs[1] # Devuelve la segunda foto
+                return imgs[0]
+    return None
+
 if vista_admin == "🎁 Gestor de Promociones":
     st.title("🎁 Gestor de Promociones")
     st.markdown("### ➕ Crear Nueva Promoción")
@@ -610,7 +628,9 @@ elif vista_admin == "📊 Finanzas y Ventas":
                 
                 with st.expander("📦 Ver piezas vendidas"):
                     for p_nombre in v.get("productos", []):
-                        st.markdown(f"<div style='margin-left: 10px; font-size: 14px;'>&bull; {p_nombre}</div>", unsafe_allow_html=True)
+                        thumb = buscar_miniatura(p_nombre)
+                        img_html = f"<img src='data:image/jpeg;base64,{thumb}' style='width: 25px; height: 25px; object-fit: cover; border-radius: 4px; vertical-align: middle; margin-right: 8px;'>" if thumb else "&bull; "
+                        st.markdown(f"<div style='margin-left: 10px; font-size: 14px; color: #ddd; margin-bottom: 5px;'>{img_html}{p_nombre}</div>", unsafe_allow_html=True)
                 
                 with st.expander("✏️ Editar Venta / Liquidar Deuda", expanded=False):
                     c1, c2, c3, c4 = st.columns([1, 1, 1, 2])
@@ -690,8 +710,10 @@ elif vista_admin == "📊 Finanzas y Ventas":
                     for pedido in pedidos_ordenados:
                         fecha_str = pedido["fecha"].strftime("%d/%m/%Y")
                         st.markdown(f"<div style='margin-top: 8px; font-weight: bold; color: #3498db;'>📅 Compra del {fecha_str}</div>", unsafe_allow_html=True)
-                        for prod_name in pedido["productos"]:
-                            st.markdown(f"<div style='margin-left: 15px; font-size: 14px; color: #ddd;'>&bull; {prod_name}</div>", unsafe_allow_html=True)
+                        for p_nombre in pedido["productos"]:
+                            thumb = buscar_miniatura(p_nombre)
+                            img_html = f"<img src='data:image/jpeg;base64,{thumb}' style='width: 25px; height: 25px; object-fit: cover; border-radius: 4px; vertical-align: middle; margin-right: 8px;'>" if thumb else "&bull; "
+                            st.markdown(f"<div style='margin-left: 15px; font-size: 14px; color: #ddd; margin-bottom: 5px;'>{img_html}{p_nombre}</div>", unsafe_allow_html=True)
                         st.markdown("<hr style='margin: 5px 0px; border-top: 1px dashed #555;'>", unsafe_allow_html=True)
 
     with tab_penalizaciones:
@@ -801,7 +823,6 @@ elif vista_admin == "📋 Ver Apartados":
     st.title("📋 Registro de Clientes y Apartados")
     todos_los_apartados = list(col_apartados.find({}))
     
-    catalogo_ram_entero = cargar_catalogo_textos()
     diccionario_productos = {str(p["_id"]): p for p in catalogo_ram_entero}
     
     if not todos_los_apartados:
@@ -969,7 +990,6 @@ else:
     es_modo_admin_agotados = st.session_state.admin_autenticado and vista_admin == "❌ Agotados (Stock 0)"
     es_modo_admin_programados = st.session_state.admin_autenticado and vista_admin == "⏳ Programados"
     es_modo_edicion = es_modo_admin_catalogo or es_modo_admin_agotados or es_modo_admin_programados
-    catalogo_ram_entero = cargar_catalogo_textos()
     
     if es_modo_edicion:
         if es_modo_admin_catalogo:
