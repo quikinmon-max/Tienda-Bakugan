@@ -658,12 +658,21 @@ elif vista_admin == "📊 Finanzas y Ventas":
                         "nombre": v.get("cliente", "Desconocido"),
                         "telefono_real": tel_original, 
                         "total_gastado": 0.0,
-                        "productos": [],
+                        "historial_pedidos": [],
+                        "total_piezas": 0,
                         "pedidos": 0
                     }
                 clientes_agrupados[tel_limpio]["total_gastado"] += v.get("precio_total", 0)
                 clientes_agrupados[tel_limpio]["pedidos"] += 1
-                clientes_agrupados[tel_limpio]["productos"].extend(v.get("productos", []))
+                
+                fecha_venta = v.get("fecha_venta", hora_qro())
+                productos_venta = v.get("productos", [])
+                
+                clientes_agrupados[tel_limpio]["historial_pedidos"].append({
+                    "fecha": fecha_venta,
+                    "productos": productos_venta
+                })
+                clientes_agrupados[tel_limpio]["total_piezas"] += len(productos_venta)
                 
             clientes_ordenados = sorted(clientes_agrupados.items(), key=lambda x: x[1]["total_gastado"], reverse=True)
             
@@ -674,9 +683,16 @@ elif vista_admin == "📊 Finanzas y Ventas":
                     <div style="font-size: 15px; color: #2ecc71; margin-top: 5px;">💰 <b>Total Invertido: ${data["total_gastado"]:,.2f}</b> &nbsp;|&nbsp; <span style="color:#aaa;">🛒 Pedidos Totales: {data["pedidos"]}</span></div>
                 </div>
                 ''', unsafe_allow_html=True)
-                with st.expander(f"📦 Ver historial completo de piezas ({len(data['productos'])})"):
-                    for prod_name in data["productos"]:
-                        st.markdown(f"<div style='margin-left: 10px; font-size: 14px;'>&bull; {prod_name}</div>", unsafe_allow_html=True)
+                
+                with st.expander(f"📦 Ver historial completo de piezas ({data['total_piezas']})"):
+                    pedidos_ordenados = sorted(data["historial_pedidos"], key=lambda x: x["fecha"], reverse=True)
+                    
+                    for pedido in pedidos_ordenados:
+                        fecha_str = pedido["fecha"].strftime("%d/%m/%Y")
+                        st.markdown(f"<div style='margin-top: 8px; font-weight: bold; color: #3498db;'>📅 Compra del {fecha_str}</div>", unsafe_allow_html=True)
+                        for prod_name in pedido["productos"]:
+                            st.markdown(f"<div style='margin-left: 15px; font-size: 14px; color: #ddd;'>&bull; {prod_name}</div>", unsafe_allow_html=True)
+                        st.markdown("<hr style='margin: 5px 0px; border-top: 1px dashed #555;'>", unsafe_allow_html=True)
 
     with tab_penalizaciones:
         st.markdown("Aquí se refleja todo el dinero de anticipos que te quedaste por apartados no liquidados o cancelados. Esto suma a tus ganancias netas sin afectar el contador de piezas vendidas.")
