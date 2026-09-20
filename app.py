@@ -497,15 +497,22 @@ def buscar_miniatura_data(prod_name_full):
 
 if vista_admin == "📦 Inventario Detallado":
     st.title("📦 Inventario Detallado")
-    st.markdown("Aquí puedes ver exactamente cuántas piezas físicas tienes listas para vender, divididas por tipo y por atributo.")
+    st.markdown("Aquí puedes ver exactamente cuántas piezas físicas tienes listas para vender, divididas por tipo y por atributo, incluyendo el valor monetario estimado de tu mercancía.")
     
-    # Contadores
+    # Contadores de piezas y valor
     cat_bakugan = 0
+    val_bakugan = 0.0
     cat_bakutech = 0
+    val_bakutech = 0.0
     cat_carta_metal = 0
+    val_carta_metal = 0.0
     cat_carta_carton = 0
+    val_carta_carton = 0.0
     cat_core = 0
+    val_core = 0.0
     cat_extras = 0
+    val_extras = 0.0
+    attr_doble = 0
     
     attr_counts = {
         "Pyrus 🔥": 0, "Aquos 💧": 0, "Ventus 🍃": 0, 
@@ -517,28 +524,41 @@ if vista_admin == "📦 Inventario Detallado":
         if stock_total <= 0:
             continue
             
+        valor_item = (p.get("stock", 0) * float(p.get("precio", 0.0))) + (p.get("stock_detalle", 0) * float(p.get("precio_detalle", 0.0)))
         tipo = p.get("tipo", "Bakugan")
         
         # Clasificar por categoría
         if tipo == "Bakugan": 
             cat_bakugan += stock_total
+            val_bakugan += valor_item
         elif tipo == "BakuTech": 
             cat_bakutech += stock_total
+            val_bakutech += valor_item
         elif tipo == "Carta":
             mat = p.get("material", "")
-            if mat == "Metálica": cat_carta_metal += stock_total
-            else: cat_carta_carton += stock_total
+            if mat == "Metálica": 
+                cat_carta_metal += stock_total
+                val_carta_metal += valor_item
+            else: 
+                cat_carta_carton += stock_total
+                val_carta_carton += valor_item
         elif tipo == "BakuCore": 
             cat_core += stock_total
+            val_core += valor_item
         else: 
             # Vehículo, Trampa, Armamento, Deka, Set de Batalla, Extra
             cat_extras += stock_total
+            val_extras += valor_item
             
         # Clasificar por atributo
         if "atributo" in p and tipo in tipos_con_atributo:
             attr1 = p.get("atributo", "")
             attr2 = p.get("atributo_2", "Ninguno")
             
+            if attr2 != "Ninguno":
+                attr_doble += stock_total
+            
+            # Sumamos las piezas a sus colores base correspondientes (sean simples o dobles)
             for key in attr_counts.keys():
                 k_name = key.split(" ")[0]
                 if k_name in attr1:
@@ -550,15 +570,15 @@ if vista_admin == "📦 Inventario Detallado":
     st.markdown("<div style='margin-bottom: 10px;'></div>", unsafe_allow_html=True)
     
     c1, c2, c3 = st.columns(3)
-    c1.metric("🔥 Bakugans", cat_bakugan)
-    c2.metric("🦾 BakuTechs", cat_bakutech)
-    c3.metric("🃏 Cartas Metal", cat_carta_metal)
+    c1.metric("🔥 Bakugans", f"{cat_bakugan} pz", f"Valor: ${val_bakugan:,.2f}", delta_color="off")
+    c2.metric("🦾 BakuTechs", f"{cat_bakutech} pz", f"Valor: ${val_bakutech:,.2f}", delta_color="off")
+    c3.metric("🃏 Cartas Metal", f"{cat_carta_metal} pz", f"Valor: ${val_carta_metal:,.2f}", delta_color="off")
     
     st.markdown("<div style='margin-bottom: 10px;'></div>", unsafe_allow_html=True)
     c4, c5, c6 = st.columns(3)
-    c4.metric("🃏 Cartas Cartón", cat_carta_carton)
-    c5.metric("🛑 BakuCores", cat_core)
-    c6.metric("🎁 Extras y Otros", cat_extras)
+    c4.metric("🃏 Cartas Cartón", f"{cat_carta_carton} pz", f"Valor: ${val_carta_carton:,.2f}", delta_color="off")
+    c5.metric("🛑 BakuCores", f"{cat_core} pz", f"Valor: ${val_core:,.2f}", delta_color="off")
+    c6.metric("🎁 Extras y Otros", f"{cat_extras} pz", f"Valor: ${val_extras:,.2f}", delta_color="off")
     
     st.markdown("---")
     st.markdown("### 🧬 Desglose por Atributo (Facciones)")
@@ -571,10 +591,11 @@ if vista_admin == "📦 Inventario Detallado":
     a4.metric("🌑 Darkus", attr_counts["Darkus 🌑"])
     
     st.markdown("<div style='margin-bottom: 10px;'></div>", unsafe_allow_html=True)
-    a5, a6, a7, _ = st.columns(4)
+    a5, a6, a7, a8 = st.columns(4)
     a5.metric("✨ Haos", attr_counts["Haos ✨"])
     a6.metric("🪨 Subterra", attr_counts["Subterra 🪨"])
     a7.metric("🟡 Aurelus", attr_counts["Aurelus 🟡"])
+    a8.metric("🧬 Dobles / Fusión", attr_doble)
 
 elif vista_admin == "🎁 Gestor de Promociones":
     st.title("🎁 Gestor de Promociones")
