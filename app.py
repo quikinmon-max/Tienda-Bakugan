@@ -452,7 +452,7 @@ if es_admin_url:
         if st.sidebar.button("🚪 Cerrar Sesión"):
             st.session_state.admin_autenticado = False
             st.rerun()
-        vista_admin = st.sidebar.radio("Opciones de Administrador", ["Ver Catálogo", "❌ Agotados (Stock 0)", "⏳ Programados", "➕ Agregar Producto", "📋 Ver Apartados", "📊 Finanzas y Ventas", "🎨 Personalizar Página", "🎁 Gestor de Promociones", "⭐ Gestor de Referencias"])
+        vista_admin = st.sidebar.radio("Opciones de Administrador", ["Ver Catálogo", "❌ Agotados (Stock 0)", "⏳ Programados", "➕ Agregar Producto", "📋 Ver Apartados", "📊 Finanzas y Ventas", "📦 Inventario Detallado", "🎨 Personalizar Página", "🎁 Gestor de Promociones", "⭐ Gestor de Referencias"])
 
 st.sidebar.markdown("<div style='height: 400px;'></div>", unsafe_allow_html=True)
 
@@ -495,7 +495,88 @@ def buscar_miniatura_data(prod_name_full):
             
     return None, None, None
 
-if vista_admin == "🎁 Gestor de Promociones":
+if vista_admin == "📦 Inventario Detallado":
+    st.title("📦 Inventario Detallado")
+    st.markdown("Aquí puedes ver exactamente cuántas piezas físicas tienes listas para vender, divididas por tipo y por atributo.")
+    
+    # Contadores
+    cat_bakugan = 0
+    cat_bakutech = 0
+    cat_carta_metal = 0
+    cat_carta_carton = 0
+    cat_core = 0
+    cat_extras = 0
+    
+    attr_counts = {
+        "Pyrus 🔥": 0, "Aquos 💧": 0, "Ventus 🍃": 0, 
+        "Darkus 🌑": 0, "Haos ✨": 0, "Subterra 🪨": 0, "Aurelus 🟡": 0
+    }
+    
+    for p in catalogo_ram_entero:
+        stock_total = p.get("stock", 0) + p.get("stock_detalle", 0)
+        if stock_total <= 0:
+            continue
+            
+        tipo = p.get("tipo", "Bakugan")
+        
+        # Clasificar por categoría
+        if tipo == "Bakugan": 
+            cat_bakugan += stock_total
+        elif tipo == "BakuTech": 
+            cat_bakutech += stock_total
+        elif tipo == "Carta":
+            mat = p.get("material", "")
+            if mat == "Metálica": cat_carta_metal += stock_total
+            else: cat_carta_carton += stock_total
+        elif tipo == "BakuCore": 
+            cat_core += stock_total
+        else: 
+            # Vehículo, Trampa, Armamento, Deka, Set de Batalla, Extra
+            cat_extras += stock_total
+            
+        # Clasificar por atributo
+        if "atributo" in p and tipo in tipos_con_atributo:
+            attr1 = p.get("atributo", "")
+            attr2 = p.get("atributo_2", "Ninguno")
+            
+            for key in attr_counts.keys():
+                k_name = key.split(" ")[0]
+                if k_name in attr1:
+                    attr_counts[key] += stock_total
+                if attr2 != "Ninguno" and k_name in attr2:
+                    attr_counts[key] += stock_total
+                    
+    st.markdown("### 📊 Desglose por Categoría")
+    st.markdown("<div style='margin-bottom: 10px;'></div>", unsafe_allow_html=True)
+    
+    c1, c2, c3 = st.columns(3)
+    c1.metric("🔥 Bakugans", cat_bakugan)
+    c2.metric("🦾 BakuTechs", cat_bakutech)
+    c3.metric("🃏 Cartas Metal", cat_carta_metal)
+    
+    st.markdown("<div style='margin-bottom: 10px;'></div>", unsafe_allow_html=True)
+    c4, c5, c6 = st.columns(3)
+    c4.metric("🃏 Cartas Cartón", cat_carta_carton)
+    c5.metric("🛑 BakuCores", cat_core)
+    c6.metric("🎁 Extras y Otros", cat_extras)
+    
+    st.markdown("---")
+    st.markdown("### 🧬 Desglose por Atributo (Facciones)")
+    st.markdown("<div style='margin-bottom: 10px;'></div>", unsafe_allow_html=True)
+    
+    a1, a2, a3, a4 = st.columns(4)
+    a1.metric("🔥 Pyrus", attr_counts["Pyrus 🔥"])
+    a2.metric("💧 Aquos", attr_counts["Aquos 💧"])
+    a3.metric("🍃 Ventus", attr_counts["Ventus 🍃"])
+    a4.metric("🌑 Darkus", attr_counts["Darkus 🌑"])
+    
+    st.markdown("<div style='margin-bottom: 10px;'></div>", unsafe_allow_html=True)
+    a5, a6, a7, _ = st.columns(4)
+    a5.metric("✨ Haos", attr_counts["Haos ✨"])
+    a6.metric("🪨 Subterra", attr_counts["Subterra 🪨"])
+    a7.metric("🟡 Aurelus", attr_counts["Aurelus 🟡"])
+
+elif vista_admin == "🎁 Gestor de Promociones":
     st.title("🎁 Gestor de Promociones")
     st.markdown("### ➕ Crear Nueva Promoción")
     with st.container():
