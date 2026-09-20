@@ -497,105 +497,137 @@ def buscar_miniatura_data(prod_name_full):
 
 if vista_admin == "📦 Inventario Detallado":
     st.title("📦 Inventario Detallado")
-    st.markdown("Aquí puedes ver exactamente cuántas piezas físicas tienes listas para vender, divididas por tipo y por atributo, incluyendo el valor monetario estimado de tu mercancía.")
+    st.markdown("Aquí puedes ver exactamente cuántas piezas físicas tienes listas para vender, divididas por tipo y por atributo, incluyendo el valor monetario estimado de tu mercancía y el estado físico de las mismas.")
     
-    # Contadores de piezas y valor
-    cat_bakugan = 0
-    val_bakugan = 0.0
-    cat_bakutech = 0
-    val_bakutech = 0.0
-    cat_carta_metal = 0
-    val_carta_metal = 0.0
-    cat_carta_carton = 0
-    val_carta_carton = 0.0
-    cat_core = 0
-    val_core = 0.0
-    cat_extras = 0
-    val_extras = 0.0
-    attr_doble = 0
-    
-    attr_counts = {
-        "Pyrus 🔥": 0, "Aquos 💧": 0, "Ventus 🍃": 0, 
-        "Darkus 🌑": 0, "Haos ✨": 0, "Subterra 🪨": 0, "Aurelus 🟡": 0
+    # ---------------- CONTADORES GLOBALES Y DICCIONARIOS ----------------
+    categorias_inv = {
+        "Bakugan": {"pz": 0, "val": 0.0, "emoji": "🔥"},
+        "BakuTech": {"pz": 0, "val": 0.0, "emoji": "🦾"},
+        "Vehículo": {"pz": 0, "val": 0.0, "emoji": "🏎️"},
+        "Trampa": {"pz": 0, "val": 0.0, "emoji": "🪤"},
+        "Armamento": {"pz": 0, "val": 0.0, "emoji": "⚔️"},
+        "Deka": {"pz": 0, "val": 0.0, "emoji": "🌐"},
+        "Set de Batalla": {"pz": 0, "val": 0.0, "emoji": "🏟️"},
+        "BakuCore": {"pz": 0, "val": 0.0, "emoji": "🛑"},
+        "Carta Metal": {"pz": 0, "val": 0.0, "emoji": "🃏"},
+        "Carta Cartón": {"pz": 0, "val": 0.0, "emoji": "🃏"},
+        "Extra": {"pz": 0, "val": 0.0, "emoji": "🎁"}
     }
     
+    attr_counts = {
+        "Pyrus 🔥": {"total": 0, "normal": 0, "detalle": 0},
+        "Aquos 💧": {"total": 0, "normal": 0, "detalle": 0},
+        "Ventus 🍃": {"total": 0, "normal": 0, "detalle": 0},
+        "Darkus 🌑": {"total": 0, "normal": 0, "detalle": 0},
+        "Haos ✨": {"total": 0, "normal": 0, "detalle": 0},
+        "Subterra 🪨": {"total": 0, "normal": 0, "detalle": 0},
+        "Aurelus 🟡": {"total": 0, "normal": 0, "detalle": 0},
+        "Dobles / Fusión 🧬": {"total": 0, "normal": 0, "detalle": 0}
+    }
+    
+    total_perfectas_global = 0
+    total_detalles_global = 0
+    
+    # ---------------- PROCESAMIENTO DE INVENTARIO ----------------
     for p in catalogo_ram_entero:
-        stock_total = p.get("stock", 0) + p.get("stock_detalle", 0)
+        sn = p.get("stock", 0)
+        sd = p.get("stock_detalle", 0)
+        stock_total = sn + sd
+        
         if stock_total <= 0:
             continue
             
-        valor_item = (p.get("stock", 0) * float(p.get("precio", 0.0))) + (p.get("stock_detalle", 0) * float(p.get("precio_detalle", 0.0)))
+        total_perfectas_global += sn
+        total_detalles_global += sd
+            
+        val_norm = sn * float(p.get("precio", 0.0))
+        val_det = sd * float(p.get("precio_detalle", 0.0))
+        valor_item = val_norm + val_det
+        
         tipo = p.get("tipo", "Bakugan")
         
-        # Clasificar por categoría
-        if tipo == "Bakugan": 
-            cat_bakugan += stock_total
-            val_bakugan += valor_item
-        elif tipo == "BakuTech": 
-            cat_bakutech += stock_total
-            val_bakutech += valor_item
+        # 1. CLASIFICACIÓN POR CATEGORÍA ESTRICTA
+        if tipo == "Bakugan":
+            categorias_inv["Bakugan"]["pz"] += stock_total
+            categorias_inv["Bakugan"]["val"] += valor_item
         elif tipo == "Carta":
             mat = p.get("material", "")
             if mat == "Metálica": 
-                cat_carta_metal += stock_total
-                val_carta_metal += valor_item
+                categorias_inv["Carta Metal"]["pz"] += stock_total
+                categorias_inv["Carta Metal"]["val"] += valor_item
             else: 
-                cat_carta_carton += stock_total
-                val_carta_carton += valor_item
-        elif tipo == "BakuCore": 
-            cat_core += stock_total
-            val_core += valor_item
-        else: 
-            # Vehículo, Trampa, Armamento, Deka, Set de Batalla, Extra
-            cat_extras += stock_total
-            val_extras += valor_item
+                categorias_inv["Carta Cartón"]["pz"] += stock_total
+                categorias_inv["Carta Cartón"]["val"] += valor_item
+        elif tipo in categorias_inv:
+            categorias_inv[tipo]["pz"] += stock_total
+            categorias_inv[tipo]["val"] += valor_item
+        else:
+            categorias_inv["Extra"]["pz"] += stock_total
+            categorias_inv["Extra"]["val"] += valor_item
             
-        # Clasificar por atributo
+        # 2. CLASIFICACIÓN POR ATRIBUTO Y ESTADO FÍSICO (Solo tipos compatibles)
         if "atributo" in p and tipo in tipos_con_atributo:
             attr1 = p.get("atributo", "")
             attr2 = p.get("atributo_2", "Ninguno")
             
             if attr2 != "Ninguno":
-                # Si es doble atributo (fusión), se va directo y exclusivo al contador de dobles.
-                attr_doble += stock_total
+                # Es doble atributo: Lo mandamos SOLO a la categoría Dobles/Fusión.
+                attr_counts["Dobles / Fusión 🧬"]["total"] += stock_total
+                attr_counts["Dobles / Fusión 🧬"]["normal"] += sn
+                attr_counts["Dobles / Fusión 🧬"]["detalle"] += sd
             else:
-                # Si es atributo simple, lo sumamos a su color correspondiente.
+                # Es atributo simple: Lo sumamos al color correspondiente.
                 for key in attr_counts.keys():
                     k_name = key.split(" ")[0]
                     if k_name in attr1:
-                        attr_counts[key] += stock_total
+                        attr_counts[key]["total"] += stock_total
+                        attr_counts[key]["normal"] += sn
+                        attr_counts[key]["detalle"] += sd
                         break
                     
+    # ---------------- RENDERIZADO VISUAL ----------------
     st.markdown("### 📊 Desglose por Categoría")
     st.markdown("<div style='margin-bottom: 10px;'></div>", unsafe_allow_html=True)
     
-    c1, c2, c3 = st.columns(3)
-    c1.metric("🔥 Bakugans", f"{cat_bakugan} pz", f"Valor: ${val_bakugan:,.2f}", delta_color="off")
-    c2.metric("🦾 BakuTechs", f"{cat_bakutech} pz", f"Valor: ${val_bakutech:,.2f}", delta_color="off")
-    c3.metric("🃏 Cartas Metal", f"{cat_carta_metal} pz", f"Valor: ${val_carta_metal:,.2f}", delta_color="off")
+    # Fila 1
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric(f"{categorias_inv['Bakugan']['emoji']} Bakugans", f"{categorias_inv['Bakugan']['pz']} pz", f"Valor: ${categorias_inv['Bakugan']['val']:,.2f}", delta_color="off")
+    c2.metric(f"{categorias_inv['BakuTech']['emoji']} BakuTechs", f"{categorias_inv['BakuTech']['pz']} pz", f"Valor: ${categorias_inv['BakuTech']['val']:,.2f}", delta_color="off")
+    c3.metric(f"{categorias_inv['Vehículo']['emoji']} Vehículos", f"{categorias_inv['Vehículo']['pz']} pz", f"Valor: ${categorias_inv['Vehículo']['val']:,.2f}", delta_color="off")
+    c4.metric(f"{categorias_inv['Trampa']['emoji']} Trampas", f"{categorias_inv['Trampa']['pz']} pz", f"Valor: ${categorias_inv['Trampa']['val']:,.2f}", delta_color="off")
     
     st.markdown("<div style='margin-bottom: 10px;'></div>", unsafe_allow_html=True)
-    c4, c5, c6 = st.columns(3)
-    c4.metric("🃏 Cartas Cartón", f"{cat_carta_carton} pz", f"Valor: ${val_carta_carton:,.2f}", delta_color="off")
-    c5.metric("🛑 BakuCores", f"{cat_core} pz", f"Valor: ${val_core:,.2f}", delta_color="off")
-    c6.metric("🎁 Extras y Otros", f"{cat_extras} pz", f"Valor: ${val_extras:,.2f}", delta_color="off")
+    # Fila 2
+    c5, c6, c7, c8 = st.columns(4)
+    c5.metric(f"{categorias_inv['Armamento']['emoji']} Armamentos", f"{categorias_inv['Armamento']['pz']} pz", f"Valor: ${categorias_inv['Armamento']['val']:,.2f}", delta_color="off")
+    c6.metric(f"{categorias_inv['Deka']['emoji']} Dekas", f"{categorias_inv['Deka']['pz']} pz", f"Valor: ${categorias_inv['Deka']['val']:,.2f}", delta_color="off")
+    c7.metric(f"{categorias_inv['Set de Batalla']['emoji']} Sets Batalla", f"{categorias_inv['Set de Batalla']['pz']} pz", f"Valor: ${categorias_inv['Set de Batalla']['val']:,.2f}", delta_color="off")
+    c8.metric(f"{categorias_inv['BakuCore']['emoji']} BakuCores", f"{categorias_inv['BakuCore']['pz']} pz", f"Valor: ${categorias_inv['BakuCore']['val']:,.2f}", delta_color="off")
+    
+    st.markdown("<div style='margin-bottom: 10px;'></div>", unsafe_allow_html=True)
+    # Fila 3
+    c9, c10, c11, _ = st.columns(4)
+    c9.metric(f"{categorias_inv['Carta Metal']['emoji']} Cartas Metal", f"{categorias_inv['Carta Metal']['pz']} pz", f"Valor: ${categorias_inv['Carta Metal']['val']:,.2f}", delta_color="off")
+    c10.metric(f"{categorias_inv['Carta Cartón']['emoji']} Cartas Cartón", f"{categorias_inv['Carta Cartón']['pz']} pz", f"Valor: ${categorias_inv['Carta Cartón']['val']:,.2f}", delta_color="off")
+    c11.metric(f"{categorias_inv['Extra']['emoji']} Extras (Maletines, etc.)", f"{categorias_inv['Extra']['pz']} pz", f"Valor: ${categorias_inv['Extra']['val']:,.2f}", delta_color="off")
     
     st.markdown("---")
-    st.markdown("### 🧬 Desglose por Atributo (Facciones)")
+    st.markdown(f"### 🧬 Desglose por Atributo (Facciones) | 🟢 {total_perfectas_global} Perfectas - 🟠 {total_detalles_global} c/Detalle en todo el inventario")
     st.markdown("<div style='margin-bottom: 10px;'></div>", unsafe_allow_html=True)
     
+    # Renderizamos los atributos con su info de perfectas y defectuosas
     a1, a2, a3, a4 = st.columns(4)
-    a1.metric("🔥 Pyrus", attr_counts["Pyrus 🔥"])
-    a2.metric("💧 Aquos", attr_counts["Aquos 💧"])
-    a3.metric("🍃 Ventus", attr_counts["Ventus 🍃"])
-    a4.metric("🌑 Darkus", attr_counts["Darkus 🌑"])
+    a1.metric("🔥 Pyrus", f"{attr_counts['Pyrus 🔥']['total']} pz", f"🟢 {attr_counts['Pyrus 🔥']['normal']} N | 🟠 {attr_counts['Pyrus 🔥']['detalle']} D", delta_color="off")
+    a2.metric("💧 Aquos", f"{attr_counts['Aquos 💧']['total']} pz", f"🟢 {attr_counts['Aquos 💧']['normal']} N | 🟠 {attr_counts['Aquos 💧']['detalle']} D", delta_color="off")
+    a3.metric("🍃 Ventus", f"{attr_counts['Ventus 🍃']['total']} pz", f"🟢 {attr_counts['Ventus 🍃']['normal']} N | 🟠 {attr_counts['Ventus 🍃']['detalle']} D", delta_color="off")
+    a4.metric("🌑 Darkus", f"{attr_counts['Darkus 🌑']['total']} pz", f"🟢 {attr_counts['Darkus 🌑']['normal']} N | 🟠 {attr_counts['Darkus 🌑']['detalle']} D", delta_color="off")
     
     st.markdown("<div style='margin-bottom: 10px;'></div>", unsafe_allow_html=True)
     a5, a6, a7, a8 = st.columns(4)
-    a5.metric("✨ Haos", attr_counts["Haos ✨"])
-    a6.metric("🪨 Subterra", attr_counts["Subterra 🪨"])
-    a7.metric("🟡 Aurelus", attr_counts["Aurelus 🟡"])
-    a8.metric("🧬 Dobles / Fusión", attr_doble)
+    a5.metric("✨ Haos", f"{attr_counts['Haos ✨']['total']} pz", f"🟢 {attr_counts['Haos ✨']['normal']} N | 🟠 {attr_counts['Haos ✨']['detalle']} D", delta_color="off")
+    a6.metric("🪨 Subterra", f"{attr_counts['Subterra 🪨']['total']} pz", f"🟢 {attr_counts['Subterra 🪨']['normal']} N | 🟠 {attr_counts['Subterra 🪨']['detalle']} D", delta_color="off")
+    a7.metric("🟡 Aurelus", f"{attr_counts['Aurelus 🟡']['total']} pz", f"🟢 {attr_counts['Aurelus 🟡']['normal']} N | 🟠 {attr_counts['Aurelus 🟡']['detalle']} D", delta_color="off")
+    a8.metric("🧬 Dobles / Fusión", f"{attr_counts['Dobles / Fusión 🧬']['total']} pz", f"🟢 {attr_counts['Dobles / Fusión 🧬']['normal']} N | 🟠 {attr_counts['Dobles / Fusión 🧬']['detalle']} D", delta_color="off")
 
 elif vista_admin == "🎁 Gestor de Promociones":
     st.title("🎁 Gestor de Promociones")
