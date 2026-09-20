@@ -527,6 +527,7 @@ if vista_admin == "📦 Inventario Detallado":
     
     total_perfectas_global = 0
     total_detalles_global = 0
+    lista_piezas_con_detalle = []
     
     # ---------------- PROCESAMIENTO DE INVENTARIO ----------------
     for p in catalogo_ram_entero:
@@ -539,6 +540,9 @@ if vista_admin == "📦 Inventario Detallado":
             
         total_perfectas_global += sn
         total_detalles_global += sd
+        
+        if sd > 0:
+            lista_piezas_con_detalle.append(p)
             
         val_norm = sn * float(p.get("precio", 0.0))
         val_det = sd * float(p.get("precio_detalle", 0.0))
@@ -628,6 +632,27 @@ if vista_admin == "📦 Inventario Detallado":
     a6.metric("🪨 Subterra", f"{attr_counts['Subterra 🪨']['total']} pz", f"🟢 {attr_counts['Subterra 🪨']['normal']} N | 🟠 {attr_counts['Subterra 🪨']['detalle']} D", delta_color="off")
     a7.metric("🟡 Aurelus", f"{attr_counts['Aurelus 🟡']['total']} pz", f"🟢 {attr_counts['Aurelus 🟡']['normal']} N | 🟠 {attr_counts['Aurelus 🟡']['detalle']} D", delta_color="off")
     a8.metric("🧬 Dobles / Fusión", f"{attr_counts['Dobles / Fusión 🧬']['total']} pz", f"🟢 {attr_counts['Dobles / Fusión 🧬']['normal']} N | 🟠 {attr_counts['Dobles / Fusión 🧬']['detalle']} D", delta_color="off")
+
+    # ---------------- LISTADO DE MERMAS / DETALLES ----------------
+    st.markdown("---")
+    st.markdown(f"### 🟠 Reporte de Piezas con Detalle ({total_detalles_global})")
+    
+    if lista_piezas_con_detalle:
+        for dp in lista_piezas_con_detalle:
+            sd = dp.get("stock_detalle", 0)
+            tipo_prod = dp.get("tipo", "Bakugan")
+            attr1 = dp.get("atributo", "")
+            attr2 = dp.get("atributo_2", "Ninguno")
+            
+            info_extra = ""
+            if tipo_prod in tipos_con_atributo and attr1:
+                info_extra = f" [{attr1} / {attr2}]" if attr2 != "Ninguno" else f" [{attr1}]"
+                
+            detalle_txt = dp.get("detalle", "No especificado")
+            
+            st.markdown(f"<div style='margin-left: 15px; margin-bottom: 5px; font-size: 15px;'>&bull; <b>{dp['nombre']}</b>{info_extra} <b>(x{sd})</b> ➔ <span style='color: #f39c12;'><i>{detalle_txt}</i></span></div>", unsafe_allow_html=True)
+    else:
+        st.success("¡Excelente! Actualmente no tienes ninguna pieza con detalles o defectos en el inventario.")
 
 elif vista_admin == "🎁 Gestor de Promociones":
     st.title("🎁 Gestor de Promociones")
