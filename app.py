@@ -556,15 +556,15 @@ if vista_admin == "📦 Inventario Detallado":
             attr2 = p.get("atributo_2", "Ninguno")
             
             if attr2 != "Ninguno":
+                # Si es doble atributo (fusión), se va directo y exclusivo al contador de dobles.
                 attr_doble += stock_total
-            
-            # Sumamos las piezas a sus colores base correspondientes (sean simples o dobles)
-            for key in attr_counts.keys():
-                k_name = key.split(" ")[0]
-                if k_name in attr1:
-                    attr_counts[key] += stock_total
-                if attr2 != "Ninguno" and k_name in attr2:
-                    attr_counts[key] += stock_total
+            else:
+                # Si es atributo simple, lo sumamos a su color correspondiente.
+                for key in attr_counts.keys():
+                    k_name = key.split(" ")[0]
+                    if k_name in attr1:
+                        attr_counts[key] += stock_total
+                        break
                     
     st.markdown("### 📊 Desglose por Categoría")
     st.markdown("<div style='margin-bottom: 10px;'></div>", unsafe_allow_html=True)
