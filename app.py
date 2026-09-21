@@ -994,7 +994,9 @@ elif vista_admin == "➕ Agregar Producto":
     col1, col2, col3, col4 = st.columns(4)
     with col1: atributo_form = st.selectbox("Atributo", categorias[1:], disabled=(tipo_prod not in tipos_con_atributo)) 
     with col2: atributo_2_form = st.selectbox("Atributo 2 (Fusión)", ["Ninguno"] + categorias[1:], disabled=(tipo_prod not in tipos_con_atributo))
-    with col3: material_form = st.selectbox("Material", materiales[1:], disabled=(tipo_prod != "Carta"))
+    with col3: 
+        material_form = st.selectbox("Material", materiales[1:], disabled=(tipo_prod != "Carta"))
+        es_japonesa = st.checkbox("🇯🇵 Carta Japonesa", disabled=(tipo_prod != "Carta" or material_form != "Cartón"), help="Marca esto para que se vaya directo a la Ruleta Japonesa.")
     with col4: simbolo_form = st.selectbox("Símbolo", simbolos_core[1:], disabled=(tipo_prod != "BakuCore"))
     
     st.markdown("### 🟢 Piezas Normales (Perfectas)")
@@ -1032,8 +1034,13 @@ elif vista_admin == "➕ Agregar Producto":
                 lista_imagenes_detalle_b64 = [comprimir_imagen(img) for img in imagenes_detalle_subidas[:6]] if imagenes_detalle_subidas else []
                 if con_detalle and not lista_imagenes_detalle_b64: lista_imagenes_detalle_b64 = lista_imagenes_b64
                     
+                nombre_guardar = nombre
+                if tipo_prod == "Carta" and material_form == "Cartón" and es_japonesa:
+                    if "japonesa" not in nombre.lower() and "japón" not in nombre.lower() and "japones" not in nombre.lower():
+                        nombre_guardar = f"{nombre} (Japonesa)"
+                        
                 nuevo_prod = {
-                    "tipo": tipo_prod, "nombre": nombre, "precio": precio, "stock": stock,
+                    "tipo": tipo_prod, "nombre": nombre_guardar, "precio": precio, "stock": stock,
                     "precio_detalle": precio_detalle, "stock_detalle": stock_detalle, "detalle": detalle_prod,
                     "imagenes_b64": lista_imagenes_b64, "imagenes_detalle_b64": lista_imagenes_detalle_b64,
                     "fecha_lanzamiento": fecha_final_prog
@@ -1048,7 +1055,7 @@ elif vista_admin == "➕ Agregar Producto":
                     
                 col_productos.insert_one(nuevo_prod)
                 forzar_actualizacion()
-            st.success(f"¡{nombre} subido con éxito!")
+            st.success(f"¡{nombre_guardar} subido con éxito!")
             st.rerun() 
         else:
             st.error("Falta el nombre, subir foto o asignar precio.")
