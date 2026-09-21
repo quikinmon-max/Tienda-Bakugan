@@ -1414,94 +1414,6 @@ else:
             promo_seleccionada = texto_default
         st.markdown("---")
 
-        # ---------------- 🎰 RULETA DE CARTAS ----------------
-        st.markdown("<h3 style='text-align:center;'>🦖 Ruleta Jurásica de Cartón</h3>", unsafe_allow_html=True)
-        st.info("¡Gira la ruleta y llévate Cartas de Cartón completamente GRATIS en tu pedido! (1 sesión de tiros por cliente)")
-        
-        if 'ruleta_jugada' not in st.session_state:
-            st.session_state.ruleta_jugada = False
-        if 'premios_ruleta' not in st.session_state:
-            st.session_state.premios_ruleta = []
-            
-        c_rul1, c_rul2 = st.columns(2)
-        tipo_ruleta = c_rul1.radio("Elige qué ruleta jugar:", ["🌎 Cartas Normales", "🇯🇵 Cartas Japonesas"], horizontal=True)
-        tiros_ruleta = c_rul2.number_input("¿Cuántos tiros quieres sacar?", min_value=1, max_value=5, value=1)
-            
-        pool_cartas = []
-        nombres_vistos = set()
-        for p in catalogo_ram_entero:
-            if p.get("tipo") == "Carta" and p.get("material") == "Cartón" and p.get("stock", 0) > 0:
-                is_jap = "japones" in p.get("nombre", "").lower() or "japón" in p.get("nombre", "").lower()
-                if (tipo_ruleta == "🇯🇵 Cartas Japonesas" and is_jap) or (tipo_ruleta == "🌎 Cartas Normales" and not is_jap):
-                    if p["nombre"] not in nombres_vistos:
-                        nombres_vistos.add(p["nombre"])
-                        pool_cartas.append(p)
-                    
-        if len(pool_cartas) >= tiros_ruleta and tiros_ruleta > 0:
-            
-            with st.expander(f"👀 Ver posibles premios de esta ruleta ({len(pool_cartas)} disponibles)"):
-                cols_prev = st.columns(4)
-                for i_prev, pc in enumerate(pool_cartas):
-                    th_prev, _, _ = buscar_miniatura_data(pc["nombre"])
-                    img_h = f"<img src='data:image/jpeg;base64,{th_prev}' style='width: 100%; border-radius: 5px;'>" if th_prev else "🃏"
-                    cols_prev[i_prev % 4].markdown(f"<div style='text-align: center; margin-bottom: 10px;'>{img_h}<br><span style='font-size: 11px;'>{pc['nombre']}</span></div>", unsafe_allow_html=True)
-
-            if not st.session_state.ruleta_jugada:
-                anim_placeholder = st.empty()
-                with anim_placeholder.container():
-                    if st.button(f"🎰 TIRAR {tiros_ruleta} VECES 🎰", use_container_width=True, type="primary"):
-                        st.session_state.ruleta_jugada = True 
-                        ganadores = random.sample(pool_cartas, tiros_ruleta)
-                        
-                        # --- Animación de las cartas volteándose ---
-                        for velocidad in range(12):
-                            html_ruleta = "<div style='display: flex; justify-content: center; align-items: center; gap: 15px; background: radial-gradient(circle, #222, #000); padding: 20px; border-radius: 10px; border: 2px solid #555; overflow: hidden;'>"
-                            for _ in range(tiros_ruleta):
-                                rotacion = velocidad * 30
-                                html_ruleta += f"""
-                                <div style='width: 150px; height: 120px; border: 3px solid #f39c12; border-radius: 8px; position: relative; background: #111; display: flex; justify-content: center; align-items: center; transition: transform 0.1s; transform: rotateY({rotacion}deg); overflow: hidden;'>
-                                    <div class="dorso-interrogacion">❓</div>
-                                </div>
-                                """
-                            html_ruleta += "</div>"
-                            anim_placeholder.markdown(html_ruleta, unsafe_allow_html=True)
-                            time.sleep(0.1 + (velocidad * 0.02)) # Frenado progresivo
-                            
-                        st.session_state.premios_ruleta = ganadores
-                        st.rerun()
-                        
-            if st.session_state.ruleta_jugada and st.session_state.premios_ruleta:
-                html_ganadores = "<div style='display: flex; flex-wrap: wrap; justify-content: center; gap: 15px; background: radial-gradient(circle, #332200, #000); padding: 20px; border-radius: 10px; border: 2px solid gold; box-shadow: 0px 0px 20px gold;'>"
-                html_ganadores += "<h3 style='color: gold; width: 100%; text-align: center; margin-top: 0;'>🎉 ¡PREMIOS LEGENDARIOS OBTENIDOS! 🎉</h3>"
-                
-                for ganador in st.session_state.premios_ruleta:
-                    th, _, _ = buscar_miniatura_data(ganador["nombre"])
-                    img_c = f"<img src='data:image/jpeg;base64,{th}' style='width: 100%; border-radius: 5px;'>" if th else "🃏"
-                    
-                    html_ganadores += f"""
-                    <div style='width: 150px; border: 3px solid gold; box-shadow: 0px 0px 30px rgba(255,215,0,0.8); border-radius: 8px; position: relative; background: #111; margin-bottom: 15px;'>
-                        <div style='position: absolute; top: -12px; left: 50%; transform: translateX(-50%); background: linear-gradient(90deg, #f1c40f, #f39c12); color: black; font-weight: bold; padding: 2px 15px; border-radius: 10px; font-size: 12px; z-index: 10; width: max-content;'>PREMIO DE ORO</div>
-                        {img_c}
-                        <div style='text-align: center; color: white; font-weight: bold; padding: 5px 0px; font-size: 11px;'>{ganador["nombre"]}</div>
-                    </div>
-                    """
-                html_ganadores += "</div>"
-                st.markdown(html_ganadores, unsafe_allow_html=True)
-                
-                if st.button("🛒 Reclamar todos y Añadir al Carrito", use_container_width=True, type="primary"):
-                    for ganador in st.session_state.premios_ruleta:
-                        st.session_state.carrito.append({
-                            "_id": str(ganador["_id"]), "nombre": f"🎁 PREMIO: {ganador['nombre']}",
-                            "precio": 0.0, "variante": "normal", "tipo": "Carta"
-                        })
-                    guardar_carrito()
-                    st.session_state.premios_ruleta = []
-                    st.rerun()
-        else:
-            st.warning(f"¡Ups! No hay suficientes cartas de este tipo para tirar {tiros_ruleta} veces.")
-            
-        st.markdown("---")
-
         # ---------------- EVALUAR PROMOS Y BANNER 3x2 / 15% OFF INTERACTIVO ----------------
         if promo_seleccionada == "🌟 Súper 3x2":
             elegibles_3x2 = [i for i in st.session_state.carrito if i.get("tipo") not in ["Carta", "BakuCore", "Extra"] and i.get("variante") != "detalle"]
@@ -1705,6 +1617,94 @@ else:
             </div>
             <style>@media (min-width: 768px) {{ .mobile-break {{ display: none; }} }}</style>
             """, unsafe_allow_html=True)
+
+        # ---------------- 🎰 RULETA DE CARTAS ACCION (SOLO VISIBLE EN CARTAS DE CARTÓN) ----------------
+        if tipo_busqueda == "Cartas 🃏" and sub_filtro == "Cartón":
+            st.markdown("<h3 style='text-align:center;'>🦖 Ruleta Cartas Accion</h3>", unsafe_allow_html=True)
+            st.info("¡Gira la ruleta y llévate Cartas de Cartón completamente GRATIS en tu pedido! (1 sesión de tiros por cliente)")
+            
+            if 'ruleta_jugada' not in st.session_state:
+                st.session_state.ruleta_jugada = False
+            if 'premios_ruleta' not in st.session_state:
+                st.session_state.premios_ruleta = []
+                
+            c_rul1, c_rul2 = st.columns(2)
+            tipo_ruleta = c_rul1.radio("Elige qué ruleta jugar:", ["🌎 Cartas Normales", "🇯🇵 Cartas Japonesas"], horizontal=True)
+            tiros_ruleta = c_rul2.number_input("¿Cuántos tiros quieres sacar?", min_value=1, max_value=5, value=1)
+                
+            pool_cartas = []
+            nombres_vistos = set()
+            for p in catalogo_ram_entero:
+                if p.get("tipo") == "Carta" and p.get("material") == "Cartón" and p.get("stock", 0) > 0:
+                    is_jap = "japones" in p.get("nombre", "").lower() or "japón" in p.get("nombre", "").lower()
+                    if (tipo_ruleta == "🇯🇵 Cartas Japonesas" and is_jap) or (tipo_ruleta == "🌎 Cartas Normales" and not is_jap):
+                        if p["nombre"] not in nombres_vistos:
+                            nombres_vistos.add(p["nombre"])
+                            pool_cartas.append(p)
+                        
+            if len(pool_cartas) >= tiros_ruleta and tiros_ruleta > 0:
+                with st.expander(f"👀 Ver posibles premios de esta ruleta ({len(pool_cartas)} disponibles)"):
+                    cols_prev = st.columns(4)
+                    for i_prev, pc in enumerate(pool_cartas):
+                        th_prev, _, _ = buscar_miniatura_data(pc["nombre"])
+                        img_h = f"<img src='data:image/jpeg;base64,{th_prev}' style='width: 100%; border-radius: 5px;'>" if th_prev else "🃏"
+                        cols_prev[i_prev % 4].markdown(f"<div style='text-align: center; margin-bottom: 10px;'>{img_h}<br><span style='font-size: 11px;'>{pc['nombre']}</span></div>", unsafe_allow_html=True)
+
+                if not st.session_state.ruleta_jugada:
+                    anim_placeholder = st.empty()
+                    with anim_placeholder.container():
+                        if st.button(f"🎰 TIRAR {tiros_ruleta} VECES 🎰", use_container_width=True, type="primary"):
+                            st.session_state.ruleta_jugada = True 
+                            ganadores = random.sample(pool_cartas, tiros_ruleta)
+                            
+                            # --- Animación de las cartas volteándose ---
+                            for velocidad in range(12):
+                                html_ruleta = "<div style='display: flex; justify-content: center; align-items: center; gap: 15px; background: radial-gradient(circle, #222, #000); padding: 20px; border-radius: 10px; border: 2px solid #555; overflow: hidden;'>"
+                                for _ in range(tiros_ruleta):
+                                    rotacion = velocidad * 30
+                                    html_ruleta += f"""
+                                    <div style='width: 150px; height: 120px; border: 3px solid #f39c12; border-radius: 8px; position: relative; background: #111; display: flex; justify-content: center; align-items: center; transition: transform 0.1s; transform: rotateY({rotacion}deg); overflow: hidden;'>
+                                        <div class="dorso-interrogacion">❓</div>
+                                    </div>
+                                    """
+                                html_ruleta += "</div>"
+                                anim_placeholder.markdown(html_ruleta, unsafe_allow_html=True)
+                                time.sleep(0.1 + (velocidad * 0.02)) # Frenado progresivo
+                                
+                            st.session_state.premios_ruleta = ganadores
+                            st.rerun()
+                            
+                if st.session_state.ruleta_jugada and st.session_state.premios_ruleta:
+                    html_ganadores = "<div style='display: flex; flex-wrap: wrap; justify-content: center; gap: 15px; background: radial-gradient(circle, #332200, #000); padding: 20px; border-radius: 10px; border: 2px solid gold; box-shadow: 0px 0px 20px gold;'>"
+                    html_ganadores += "<h3 style='color: gold; width: 100%; text-align: center; margin-top: 0;'>🎉 ¡PREMIOS LEGENDARIOS OBTENIDOS! 🎉</h3>"
+                    
+                    for ganador in st.session_state.premios_ruleta:
+                        th, _, _ = buscar_miniatura_data(ganador["nombre"])
+                        img_c = f"<img src='data:image/jpeg;base64,{th}' style='width: 100%; border-radius: 5px;'>" if th else "🃏"
+                        
+                        html_ganadores += f"""
+                        <div style='width: 150px; border: 3px solid gold; box-shadow: 0px 0px 30px rgba(255,215,0,0.8); border-radius: 8px; position: relative; background: #111; margin-bottom: 15px;'>
+                            <div style='position: absolute; top: -12px; left: 50%; transform: translateX(-50%); background: linear-gradient(90deg, #f1c40f, #f39c12); color: black; font-weight: bold; padding: 2px 15px; border-radius: 10px; font-size: 12px; z-index: 10; width: max-content;'>PREMIO DE ORO</div>
+                            {img_c}
+                            <div style='text-align: center; color: white; font-weight: bold; padding: 5px 0px; font-size: 11px;'>{ganador["nombre"]}</div>
+                        </div>
+                        """
+                    html_ganadores += "</div>"
+                    st.markdown(html_ganadores, unsafe_allow_html=True)
+                    
+                    if st.button("🛒 Reclamar todos y Añadir al Carrito", use_container_width=True, type="primary"):
+                        for ganador in st.session_state.premios_ruleta:
+                            st.session_state.carrito.append({
+                                "_id": str(ganador["_id"]), "nombre": f"🎁 PREMIO: {ganador['nombre']}",
+                                "precio": 0.0, "variante": "normal", "tipo": "Carta"
+                            })
+                        guardar_carrito()
+                        st.session_state.premios_ruleta = []
+                        st.rerun()
+            else:
+                st.warning(f"¡Ups! No hay suficientes cartas de este tipo para tirar {tiros_ruleta} veces.")
+                
+            st.markdown("---")
 
     # ---------------- BÚSQUEDA SÚPER RÁPIDA EN RAM ----------------
     productos_filtrados = []
