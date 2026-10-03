@@ -193,6 +193,45 @@ if not st.session_state.welcome_shown and not es_admin_url:
         
     st.stop()
 
+# ---------------- LÓGICA DE MINIATURAS GLOBALES ----------------
+catalogo_ram_entero = cargar_catalogo_textos()
+
+def buscar_miniatura_data(prod_name_full):
+    """Busca exacto por nombre + atributo para no confundir piezas, y devuelve foto, nombre y galería completa para hacer zoom."""
+    tipos_figuras = ["Bakugan", "Vehículo", "BakuTech", "Trampa", "Armamento", "Deka", "Set de Batalla"]
+    best_match = None
+    max_len = 0
+    
+    for p in catalogo_ram_entero:
+        tipo_prod = p.get("tipo", "Bakugan")
+        info_extra = ""
+        if "atributo" in p and tipo_prod in tipos_figuras:
+            attr1 = p.get("atributo", "")
+            attr2 = p.get("atributo_2", "Ninguno")
+            info_extra = f"{attr1} / {attr2}" if attr2 != "Ninguno" else attr1
+        elif "material" in p and tipo_prod == "Carta":
+            info_extra = p.get('material', '')
+        elif "simbolo" in p and tipo_prod == "BakuCore":
+            info_extra = p.get('simbolo', '')
+        
+        # Blindaje: Debe coincidir el nombre exacto y el atributo exacto para no mezclar colores
+        if p['nombre'] in prod_name_full and (info_extra in prod_name_full or not info_extra):
+            if len(p['nombre']) > max_len:
+                max_len = len(p['nombre'])
+                best_match = (p, tipo_prod)
+                
+    if best_match:
+        p, tipo_prod = best_match
+        info = obtener_foto_mongo(str(p["_id"]))
+        imgs = info.get("imagenes_b64", []) or info.get("imagenes_detalle_b64", [])
+        if not imgs and "imagen_b64" in info: imgs = [info["imagen_b64"]]
+        if imgs:
+            if tipo_prod in tipos_figuras and len(imgs) > 1:
+                return imgs[1], p['nombre'], imgs # Segunda foto abierta
+            return imgs[0], p['nombre'], imgs
+            
+    return None, None, None
+
 # ---------------- MODALES Y DIÁLOGOS ----------------
 @st.dialog("📖 ¡Reglas y Cómo Comprar!")
 def abrir_tutorial():
@@ -262,11 +301,10 @@ def abrir_zoom(nombre_prod, imagenes_b64):
     if len(imagenes_b64) > 1:
         st.markdown("<p style='text-align: center; color: #aaa; font-size: 14px; margin-top: 10px;'>👉 Desliza para ver más</p>", unsafe_allow_html=True)
 
-@st.dialog("🎁 Menú de Regalos (Promo 3x2)")
+@st.dialog("🎁 ¡Ruleta de Regalo Súper 3x2!")
 def modal_regalo_3x2():
     precio_max = 160.0
-    st.markdown(f"¡Felicidades! Como llevas 2 piezas, tienes derecho a elegir una tercera completamente **GRATIS**.")
-    st.info("👇 Estas son las piezas que aplican para tu regalo. ¡Elige rápido antes de que te la ganen!")
+    st.markdown(f"¡Felicidades! Como llevas 2 piezas, te regalamos una tercera al azar (Topado a ${precio_max:,.2f}). ¡Gira la ruleta para descubrir tu premio!")
     
     tipos_con_atributo = ["Bakugan", "Trampa", "Vehículo", "Armamento", "BakuTech", "Set de Batalla", "Deka"]
     catalogo_ram = cargar_catalogo_textos()
@@ -279,40 +317,73 @@ def modal_regalo_3x2():
             continue
         regalos_filtrados.append(r)
         
-    regalos_filtrados = sorted(regalos_filtrados, key=lambda x: x["precio"], reverse=True)[:50]
-    
     if not regalos_filtrados:
-        st.warning(f"Uy, parece que en este momento no tenemos piezas disponibles de ${precio_max} o menos.")
-    else:
-        for reg in regalos_filtrados:
-            c1, c2 = st.columns([3, 1])
-            
-            emojis = ""
-            if reg.get("tipo") in tipos_con_atributo and "atributo" in reg:
-                attr1 = reg["atributo"].split()[-1] if " " in reg["atributo"] else ""
-                attr2 = reg.get("atributo_2", "Ninguno")
-                attr2_emoji = attr2.split()[-1] if " " in attr2 and attr2 != "Ninguno" else ""
-                
-                if attr2_emoji:
-                    emojis = f"{attr1}/{attr2_emoji}🧬"
-                elif reg.get("es_fusion"):
-                    emojis = f"{attr1}🧬"
-                else:
-                    emojis = f"{attr1}"
+        st.warning(f"Uy, parece que en este momento no tenemos piezas disponibles de ${precio_max} o menos para regalar.")
+        if st.button("Cerrar", use_container_width=True):
+            st.session_state.abrir_modal_3x2 = False
+            st.rerun()
+        return
 
-            c1.markdown(f"<div style='margin-top:8px;'><span style='font-size:16px;'><b>{reg['nombre']}</b> {emojis}</span></div>", unsafe_allow_html=True)
-            if c2.button("🎁 Elegir", key=f"btn_regalo_{str(reg['_id'])}", use_container_width=True):
-                st.session_state.carrito.append({
-                    "_id": str(reg["_id"]), "nombre": reg["nombre"],
-                    "precio": reg["precio"], "variante": "normal", "tipo": reg.get("tipo", "Bakugan")
-                })
-                guardar_carrito()
-                if "abrir_modal_3x2" in st.session_state: st.session_state.abrir_modal_3x2 = False
+    if 'ruleta_3x2_jugada' not in st.session_state:
+        st.session_state.ruleta_3x2_jugada = False
+    if 'premio_3x2' not in st.session_state:
+        st.session_state.premio_3x2 = None
+
+    if not st.session_state.ruleta_3x2_jugada:
+        anim_placeholder = st.empty()
+        with anim_placeholder.container():
+            if st.button("🎰 GIRAR RULETA POR MI REGALO 🎰", use_container_width=True, type="primary"):
+                st.session_state.ruleta_3x2_jugada = True 
+                ganador = random.choice(regalos_filtrados)
+                
+                # --- Animación de las cartas volteándose ---
+                for velocidad in range(12):
+                    rotacion = velocidad * 30
+                    html_ruleta = f"""
+                    <div style='display: flex; justify-content: center; align-items: center; background: radial-gradient(circle, #222, #000); padding: 20px; border-radius: 10px; border: 2px solid #555; overflow: hidden;'>
+                        <div style='width: 150px; height: 120px; border: 3px solid #f39c12; border-radius: 8px; position: relative; background: #111; display: flex; justify-content: center; align-items: center; transition: transform 0.1s; transform: rotateY({rotacion}deg); overflow: hidden;'>
+                            <div class="dorso-interrogacion">❓</div>
+                        </div>
+                    </div>
+                    """
+                    anim_placeholder.markdown(html_ruleta, unsafe_allow_html=True)
+                    time.sleep(0.1 + (velocidad * 0.02)) # Frenado progresivo
+                    
+                st.session_state.premio_3x2 = ganador
                 st.rerun()
                 
+    if st.session_state.ruleta_3x2_jugada and st.session_state.premio_3x2:
+        ganador = st.session_state.premio_3x2
+        th, _, _ = buscar_miniatura_data(ganador["nombre"])
+        img_c = f"<img src='data:image/jpeg;base64,{th}' style='width: 100%; border-radius: 5px;'>" if th else "🎁"
+        
+        st.markdown(f"""
+        <div style='display: flex; flex-direction: column; align-items: center; background: radial-gradient(circle, #332200, #000); padding: 20px; border-radius: 10px; border: 2px solid gold; box-shadow: 0px 0px 20px gold;'>
+            <h3 style='color: gold; margin-top: 0;'>🎉 ¡TU REGALO! 🎉</h3>
+            <div style='width: 150px; border: 3px solid gold; box-shadow: 0px 0px 30px rgba(255,215,0,0.8); border-radius: 8px; position: relative; background: #111; margin-bottom: 15px;'>
+                <div style='position: absolute; top: -12px; left: 50%; transform: translateX(-50%); background: linear-gradient(90deg, #f1c40f, #f39c12); color: black; font-weight: bold; padding: 2px 15px; border-radius: 10px; font-size: 12px; z-index: 10; width: max-content;'>GRATIS 3x2</div>
+                {img_c}
+                <div style='text-align: center; color: white; font-weight: bold; padding: 5px 0px; font-size: 11px;'>{ganador["nombre"]}</div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        if st.button("🛒 Reclamar y Añadir al Carrito", use_container_width=True, type="primary"):
+            st.session_state.carrito.append({
+                "_id": str(ganador["_id"]), "nombre": ganador["nombre"],
+                "precio": float(ganador.get("precio", 0.0)), "variante": "normal", "tipo": ganador.get("tipo", "Bakugan")
+            })
+            guardar_carrito()
+            st.session_state.abrir_modal_3x2 = False
+            st.session_state.ruleta_3x2_jugada = False
+            st.session_state.premio_3x2 = None
+            st.rerun()
+            
     st.markdown("---")
-    if st.button("Elegir más tarde / Cerrar Menú", use_container_width=True):
-        if "abrir_modal_3x2" in st.session_state: st.session_state.abrir_modal_3x2 = False
+    if st.button("Cerrar Menú (Sin Regalo)", use_container_width=True):
+        st.session_state.abrir_modal_3x2 = False
+        st.session_state.ruleta_3x2_jugada = False
+        st.session_state.premio_3x2 = None
         st.rerun()
 
 # --- AQUÍ ASEGURAMOS QUE SE DISPARE EL MODAL DEL WHATSAPP SI EXISTE EN MEMORIA ---
@@ -489,45 +560,6 @@ if es_admin_url:
         vista_admin = st.sidebar.radio("Opciones de Administrador", ["Ver Catálogo", "❌ Agotados (Stock 0)", "⏳ Programados", "➕ Agregar Producto", "📋 Ver Apartados", "📊 Finanzas y Ventas", "📦 Inventario Detallado", "🎨 Personalizar Página", "🎁 Gestor de Promociones", "⭐ Gestor de Referencias"])
 
 st.sidebar.markdown("<div style='height: 400px;'></div>", unsafe_allow_html=True)
-
-# ---------------- LÓGICA DE MINIATURAS GLOBALES ----------------
-catalogo_ram_entero = cargar_catalogo_textos()
-
-def buscar_miniatura_data(prod_name_full):
-    """Busca exacto por nombre + atributo para no confundir piezas, y devuelve foto, nombre y galería completa para hacer zoom."""
-    tipos_figuras = ["Bakugan", "Vehículo", "BakuTech", "Trampa", "Armamento", "Deka", "Set de Batalla"]
-    best_match = None
-    max_len = 0
-    
-    for p in catalogo_ram_entero:
-        tipo_prod = p.get("tipo", "Bakugan")
-        info_extra = ""
-        if "atributo" in p and tipo_prod in tipos_figuras:
-            attr1 = p.get("atributo", "")
-            attr2 = p.get("atributo_2", "Ninguno")
-            info_extra = f"{attr1} / {attr2}" if attr2 != "Ninguno" else attr1
-        elif "material" in p and tipo_prod == "Carta":
-            info_extra = p.get('material', '')
-        elif "simbolo" in p and tipo_prod == "BakuCore":
-            info_extra = p.get('simbolo', '')
-        
-        # Blindaje: Debe coincidir el nombre exacto y el atributo exacto para no mezclar colores
-        if p['nombre'] in prod_name_full and (info_extra in prod_name_full or not info_extra):
-            if len(p['nombre']) > max_len:
-                max_len = len(p['nombre'])
-                best_match = (p, tipo_prod)
-                
-    if best_match:
-        p, tipo_prod = best_match
-        info = obtener_foto_mongo(str(p["_id"]))
-        imgs = info.get("imagenes_b64", []) or info.get("imagenes_detalle_b64", [])
-        if not imgs and "imagen_b64" in info: imgs = [info["imagen_b64"]]
-        if imgs:
-            if tipo_prod in tipos_figuras and len(imgs) > 1:
-                return imgs[1], p['nombre'], imgs # Segunda foto abierta
-            return imgs[0], p['nombre'], imgs
-            
-    return None, None, None
 
 if vista_admin == "📦 Inventario Detallado":
     st.title("📦 Inventario Detallado")
@@ -754,7 +786,7 @@ elif vista_admin == "🎁 Gestor de Promociones":
             if activa != promo["activa"]:
                 config_promos["volumen"][i]["activa"] = activa
                 cambios = True
-            if c3.button("🗑️️ Eliminar", key=f"dl_v_{promo['id']}"):
+            if c3.button("🗑️ Eliminar", key=f"dl_v_{promo['id']}"):
                 config_promos["volumen"].pop(i)
                 cambios = True
                 
@@ -801,7 +833,7 @@ elif vista_admin == "⭐ Gestor de Referencias":
         for idx, ref in enumerate(refs_actuales):
             with cols[idx % 4]:
                 st.markdown(f'<img src="data:image/jpeg;base64,{ref}" style="width:100%; border-radius:8px; margin-bottom:10px;">', unsafe_allow_html=True)
-                if st.button("🗑️️ Eliminar", key=f"del_ref_{idx}", use_container_width=True):
+                if st.button("🗑️ Eliminar", key=f"del_ref_{idx}", use_container_width=True):
                     col_config.update_one({"_id": "referencias"}, {"$pull": {"imagenes": ref}})
                     forzar_actualizacion()
                     st.rerun()
@@ -1518,10 +1550,10 @@ else:
                 st.markdown(f"""
                 <div style="background: linear-gradient(90deg, #f1c40f, #f39c12); padding: 15px; border-radius: 8px; text-align: center; color: white; margin-bottom: 10px;">
                     <h3 style="margin: 0; color: white;">🎁 ¡Tienes un 3x2 Activo!</h3>
-                    <p style="margin: 0; font-size: 16px;">Llevas 2 piezas, te regalamos la 3ra</p>
+                    <p style="margin: 0; font-size: 16px;">Llevas 2 piezas, te regalamos la 3ra al azar</p>
                 </div>
                 """, unsafe_allow_html=True)
-                if st.button("👉 ABRIR MENÚ PARA ELEGIR MI REGALO 👈", type="primary", use_container_width=True):
+                if st.button("👉 GIRAR RULETA POR MI REGALO 👈", type="primary", use_container_width=True):
                     st.session_state.abrir_modal_3x2 = True
                     st.rerun()
                     
@@ -1692,6 +1724,27 @@ else:
                                 st.rerun()
                         else: st.warning("⚠️ Faltan datos.")
                 else: st.info("Carrito vacío.")
+
+        banner_frases = []
+        if config_promos.get("promo_3x2", False): banner_frases.append("🌟 <b>¡SÚPER 3x2! Llevas 3, Pagas 2</b>")
+        if config_promos.get("promo_15_off", False): banner_frases.append("🔥 <b>15% OFF</b>")
+        for p in config_promos.get("volumen", []):
+            if p["activa"]: banner_frases.append(f"📦 <b>{p['min_piezas']}+ {p['categoria']}s a ${p['precio_fijo']:,.2f} c/u</b>")
+        for p in config_promos.get("monto", []):
+            if p["activa"]: banner_frases.append(f"🤑 <b>{p['porcentaje']}% OFF</b> en compras > ${p['min_total']:,.2f}")
+        
+        # --- ENVÍO GRATIS LIGADO EN LA BARRA DE PROMOS DE FORMA DINÁMICA ---
+        if config_promos.get("envio_gratis", {}).get("activa", False):
+            m_env = config_promos["envio_gratis"].get("monto_minimo", 2500.0)
+            banner_frases.append(f"🚚 <b>ENVÍO GRATIS en compras >= ${m_env:,.2f}</b>")
+                
+        if banner_frases:
+            st.markdown(f"""
+            <div style="background: linear-gradient(90deg, #ff416c, #ff4b2b); padding: 12px; border-radius: 8px; text-align: center; color: white; font-size: 15px; margin-bottom: 20px;">
+                ✨ <b>¡PROMOS ACTIVAS!</b> ✨ <br class="mobile-break"> {" &nbsp;|&nbsp; ".join(banner_frases)}
+            </div>
+            <style>@media (min-width: 768px) {{ .mobile-break {{ display: none; }} }}</style>
+            """, unsafe_allow_html=True)
 
     # ---------------- BÚSQUEDA SÚPER RÁPIDA EN RAM ----------------
     productos_filtrados = []
