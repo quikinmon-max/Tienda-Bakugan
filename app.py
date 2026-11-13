@@ -1486,6 +1486,26 @@ else:
                     st.markdown("Presiona para generar el PDF (Solo Cartas, BakuCores, Extras)")
                     pdf_data_2 = generar_pdf(prods_otros)
                     st.download_button("✅ Descargar PDF Extras", data=pdf_data_2, file_name=f"Extras_BakuMarket_{datetime.utcnow().strftime('%Y%m%d')}.pdf", mime="application/pdf", type="primary", use_container_width=True)
+
+            # --- NUEVO: PDF RÁPIDO POR ATRIBUTO (TODAS las piezas de ese atributo: Bakugan, Trampa, BakuTech, dobles, etc.) ---
+            def limpiar_pdf_attr():
+                st.session_state.pdf_attr_bytes = None
+
+            with st.expander("🎨 PDF por Atributo (ej. todo lo Ventus)"):
+                c_at1, c_at2 = st.columns([2, 1])
+                attr_pdf = c_at1.selectbox("Atributo", categorias[1:], key="pdf_attr_sel", label_visibility="collapsed", on_change=limpiar_pdf_attr)
+                prods_attr = [p for p in productos_disponibles_ahora if p.get("atributo", "") == attr_pdf or p.get("atributo_2", "Ninguno") == attr_pdf]
+
+                if c_at2.button(f"⚙️ Generar ({len(prods_attr)} pz)", use_container_width=True, disabled=(len(prods_attr) == 0), key="pdf_attr_btn"):
+                    with st.spinner("Armando tu PDF..."):
+                        st.session_state.pdf_attr_bytes = generar_pdf(prods_attr)
+                        st.session_state.pdf_attr_nombre = attr_pdf.split(" ")[0]
+
+                if st.session_state.get("pdf_attr_bytes"):
+                    nombre_attr = st.session_state.get("pdf_attr_nombre", "Atributo")
+                    st.download_button(f"✅ Descargar PDF {nombre_attr}", data=st.session_state.pdf_attr_bytes,
+                                       file_name=f"{nombre_attr}_BakuMarket_{datetime.utcnow().strftime('%Y%m%d')}.pdf",
+                                       mime="application/pdf", type="primary", use_container_width=True, key="pdf_attr_dl")
                 
             st.markdown("---")
             busqueda_texto = st.text_input("🔍 Buscar pieza por nombre...")
