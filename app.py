@@ -63,7 +63,7 @@ def obtener_configuraciones():
             "monto": [{"id": str(uuid.uuid4())[:8], "min_total": 2000.0, "porcentaje": 10.0, "activa": True}],
             "promo_3x2": False,
             "promo_15_off": False,
-            "promo_mayorista": False,
+            "promo_mayorista": {"activa": False, "precio": 200.0},
             "envio_gratis": {"activa": False, "monto_minimo": 2500.0}
         }
         col_config.insert_one({"_id": "promociones", **promos})
@@ -75,8 +75,8 @@ def obtener_configuraciones():
         if "promo_15_off" not in promos:
             promos["promo_15_off"] = False
             actualizar = True
-        if "promo_mayorista" not in promos:
-            promos["promo_mayorista"] = False
+        if "promo_mayorista" not in promos or isinstance(promos["promo_mayorista"], bool):
+            promos["promo_mayorista"] = {"activa": False, "precio": 200.0}
             actualizar = True
         if "envio_gratis" not in promos:
             promos["envio_gratis"] = {"activa": False, "monto_minimo": 2500.0}
@@ -121,24 +121,24 @@ if 'session_id' not in st.session_state:
 if 'ultima_actividad_carrito' not in st.session_state:
     st.session_state.ultima_actividad_carrito = hora_qro()
 
-if 'carrito_inicializado' not in st.session_state:
-    carrito_guardado = col_carritos.find_one({"_id": st.session_state.session_id})
-    if carrito_guardado and (hora_qro() - carrito_guardado.get("fecha", hora_qro()) < timedelta(hours=24)):
-        st.session_state.carrito = carrito_guardado.get("items", [])
-        st.session_state.ultima_actividad_carrito = carrito_guardado.get("fecha", hora_qro())
-    else:
-        st.session_state.carrito = []
-    st.session_state.carrito_inicializado = True
-
 # --- LÓGICA DE TIEMPO DINÁMICO ---
 promo_en_curso = st.session_state.get("promo_radio", "Ninguna")
-if promo_en_curso == "👑 Mayorista $200":
-    if len(st.session_state.carrito) >= 100:
+if promo_en_curso.startswith("👑 Mayorista"):
+    if len(st.session_state.get("carrito", [])) >= 100:
         limite_minutos = 60
     else:
         limite_minutos = 1440 # 24 horas (tiempo libre para llenar el carrito)
 else:
     limite_minutos = 30
+
+if 'carrito_inicializado' not in st.session_state:
+    carrito_guardado = col_carritos.find_one({"_id": st.session_state.session_id})
+    if carrito_guardado and (hora_qro() - carrito_guardado.get("fecha", hora_qro()) < timedelta(minutes=limite_minutos)):
+        st.session_state.carrito = carrito_guardado.get("items", [])
+        st.session_state.ultima_actividad_carrito = carrito_guardado.get("fecha", hora_qro())
+    else:
+        st.session_state.carrito = []
+    st.session_state.carrito_inicializado = True
 
 if st.session_state.carrito and (hora_qro() - st.session_state.ultima_actividad_carrito > timedelta(minutes=limite_minutos)):
     st.session_state.carrito = []
@@ -146,6 +146,8 @@ if st.session_state.carrito and (hora_qro() - st.session_state.ultima_actividad_
     col_carritos.delete_one({"_id": st.session_state.session_id})
     if limite_minutos == 60:
         st.warning("⏳ Tu carrito mayorista expiró por inactividad de 1 hora. Las piezas fueron liberadas para otros clientes.")
+    elif limite_minutos == 1440:
+        st.warning("⏳ Tu sesión mayorista caducó tras 24 horas. Las piezas fueron liberadas.")
     else:
         st.warning("⏳ Tu carrito expiró por inactividad. Las piezas fueron liberadas para otros clientes.")
 
@@ -318,7 +320,6 @@ def abrir_zoom(nombre_prod, imagenes_b64):
     if len(imagenes_b64) > 1:
         st.markdown("<p style='text-align: center; color: #aaa; font-size: 14px; margin-top: 10px;'>👉 Desliza para ver más</p>", unsafe_allow_html=True)
 
-# ----------------- ¡CRÍTICO 1 RESUELTO: LA RULETA 3x2 REGRESÓ! -----------------
 @st.dialog("🎁 ¡Ruleta de Regalo Súper 3x2!")
 def modal_regalo_3x2():
     precio_max = 160.0
@@ -404,7 +405,6 @@ def modal_regalo_3x2():
         st.session_state.premio_3x2 = None
         st.rerun()
 
-# ----------------- ¡CRÍTICO 2 RESUELTO: EL DISPARADOR DE WHATSAPP REGRESÓ! -----------------
 # --- AQUÍ ASEGURAMOS QUE SE DISPARE EL MODAL DEL WHATSAPP SI EXISTE EN MEMORIA ---
 if 'wa_link' in st.session_state and st.session_state.wa_link:
     modal_whatsapp(st.session_state.wa_link)
@@ -794,12 +794,17 @@ elif vista_admin == "🎁 Gestor de Promociones":
         config_promos["envio_gratis"]["monto_minimo"] = monto_env
         cambios = True
     
-    st.markdown("#### 👑 Promo Mayorista ($200 Parejo)")
-    c1_may, c2_may, _ = st.columns([6, 2, 2])
-    c1_may.info("Precio fijo de $200.00 para todas las figuras principales (Ideal para +100 piezas)")
-    activa_may = c2_may.toggle("Activada", value=config_promos.get("promo_mayorista", False), key="tg_may")
-    if activa_may != config_promos.get("promo_mayorista", False):
-        config_promos["promo_mayorista"] = activa_may
+    st.markdown("#### 👑 Promo Mayorista (Precio Especial)")
+    c1_may, c2_may, c3_may = st.columns([5, 2, 2])
+    promo_may_bd = config_promos.get("promo_mayorista", {})
+    if isinstance(promo_may_bd, bool): promo_may_bd = {"activa": promo_may_bd, "precio": 200.0}
+        
+    c1_may.info("Fija un precio parejo para TODAS las figuras (Aplica al superar 100 piezas)")
+    precio_may_input = c2_may.number_input("Precio $", min_value=0.0, step=10.0, value=float(promo_may_bd.get("precio", 200.0)), label_visibility="collapsed")
+    activa_may = c3_may.toggle("Activada", value=promo_may_bd.get("activa", False), key="tg_may")
+    
+    if activa_may != promo_may_bd.get("activa", False) or precio_may_input != promo_may_bd.get("precio", 200.0):
+        config_promos["promo_mayorista"] = {"activa": activa_may, "precio": precio_may_input}
         cambios = True
 
     if config_promos.get("volumen"):
@@ -1462,7 +1467,12 @@ else:
         opciones_promo = [texto_default]
         if config_promos.get("promo_3x2", False): opciones_promo.append("🌟 Súper 3x2")
         if config_promos.get("promo_15_off", False): opciones_promo.append("🔥 15% OFF")
-        if config_promos.get("promo_mayorista", False): opciones_promo.append("👑 Mayorista $200")
+        
+        # Leemos el precio dinámico de la promo mayorista
+        precio_may_dinamico = config_promos.get("promo_mayorista", {}).get("precio", 200.0) if isinstance(config_promos.get("promo_mayorista", {}), dict) else 200.0
+        if config_promos.get("promo_mayorista", {}).get("activa", False): 
+            opciones_promo.append(f"👑 Mayorista ${precio_may_dinamico:,.2f}")
+            
         if config_promos.get("volumen", []) and any(p["activa"] for p in config_promos["volumen"]): opciones_promo.append("📦 Precio por Volumen")
         if config_promos.get("monto", []) and any(p["activa"] for p in config_promos["monto"]): opciones_promo.append("🤑 Descuento por Monto")
 
@@ -1516,15 +1526,15 @@ else:
             promos_volumen_aplicables = {}
             mejor_promo_monto = None
             
-            if promo_seleccionada == "👑 Mayorista $200":
+            if promo_seleccionada.startswith("👑 Mayorista"):
                 piezas_con_descuento_may = 0
                 for ip in items_procesados:
                     if ip["item"].get("tipo") in tipos_con_atributo: 
-                        ip["precio_efec"] = 200.0
+                        ip["precio_efec"] = float(precio_may_dinamico)
                         ip["es_promo_mayorista"] = True
                         piezas_con_descuento_may += 1
                 if piezas_con_descuento_may > 0:
-                    textos_promos_activas.append(f"👑 ¡Precio mayorista aplicado a {piezas_con_descuento_may} pieza(s)!")
+                    textos_promos_activas.append(f"👑 ¡Precio mayorista de ${precio_may_dinamico:,.2f} aplicado a {piezas_con_descuento_may} pieza(s)!")
                 else:
                     textos_promos_activas.append("⚠️ La promo mayorista está activa, pero no hay figuras en tu carrito.")
 
@@ -1557,7 +1567,6 @@ else:
                 elegibles_todas = [ip for ip in items_procesados if ip["item"].get("tipo", "Bakugan") not in ["Carta", "BakuCore", "Extra"] and ip["item"].get("variante", "normal") != "detalle"]
                 max_regalos = len(elegibles_todas) // 3
                 
-                # CANDADO DE TITANIO: Solo las piezas de 160 o menos pueden ser regaladas.
                 elegibles_regalables = sorted([ip for ip in elegibles_todas if ip["precio_efec"] <= 160.0], key=lambda x: x["precio_efec"], reverse=True)
                 
                 piezas_regaladas = 0
@@ -1587,15 +1596,18 @@ else:
                 if ip["es_promo_3x2"]: ip["precio_final"], ip["msg_wa"] = 0.0, " (¡Gratis 3x2!)"
                 elif ip["es_promo_15"]: ip["precio_final"], ip["msg_wa"] = ip["precio_efec"], " (-15%)"
                 elif ip["es_promo_vol"]: ip["precio_final"], ip["msg_wa"] = ip["precio_efec"], f" (Promo ${ip['precio_efec']})"
-                elif ip.get("es_promo_mayorista"): ip["precio_final"], ip["msg_wa"] = ip["precio_efec"], " (Mayorista $200)"
+                elif ip.get("es_promo_mayorista"): ip["precio_final"], ip["msg_wa"] = ip["precio_efec"], f" (Mayorista ${precio_may_dinamico})"
                 elif mejor_promo_monto: ip["precio_final"], ip["msg_wa"] = ip["precio_efec"] * (1 - (mejor_promo_monto["porcentaje"] / 100.0)), f" (-{mejor_promo_monto['porcentaje']}%)"
                 else: ip["precio_final"], ip["msg_wa"] = ip["precio_efec"], ""
                 total_carrito += ip["precio_final"]
                 
-            # --- AVISO VISUAL DE ENVÍO GRATIS ---
+            # --- AVISO VISUAL DE ENVÍO GRATIS (OCULTO EN MAYORISTA) ---
+            aplica_envio_gratis = False
             promo_envio = config_promos.get("envio_gratis", {})
             if promo_envio.get("activa", False) and total_carrito >= promo_envio.get("monto_minimo", 2500.0):
-                textos_promos_activas.append("🚚 ¡Felicidades! Tu compra califica para ENVÍO GRATIS.")
+                if not promo_seleccionada.startswith("👑 Mayorista"):
+                    aplica_envio_gratis = True
+                    textos_promos_activas.append("🚚 ¡Felicidades! Tu compra califica para ENVÍO GRATIS.")
             
             with st.popover(f"🛒 Carrito ({cantidad_carrito}) - ${total_carrito:,.2f}", use_container_width=True):
                 if cantidad_carrito > 0:
@@ -1626,8 +1638,9 @@ else:
                                 st.session_state.bloqueo_checkout = False
                                 st.rerun()
                                 
-                            if promo_seleccionada == "👑 Mayorista $200" and cantidad_carrito < 100:
-                                st.error(f"⚠️ Para aplicar el precio Mayorista de $200 necesitas mínimo 100 piezas. Llevas {cantidad_carrito}.")
+                            # --- CANDADO ANTI-TRAMPAS MAYORISTA ---
+                            if promo_seleccionada.startswith("👑 Mayorista") and cantidad_carrito < 100:
+                                st.error(f"⚠️ Para confirmar tu pedido con precio Mayorista necesitas agregar mínimo 100 piezas. Solo llevas {cantidad_carrito}.")
                                 st.session_state.bloqueo_checkout = False
                             else:
                                 error_stock = False
@@ -1662,11 +1675,11 @@ else:
                                     if not promo_seleccionada.startswith("Ninguna"):
                                         texto_crudo += f"\n*Nota: Seleccioné usar la promoción: {promo_seleccionada}.*"
                                     
-                                    if promo_envio.get("activa", False) and total_carrito >= promo_envio.get("monto_minimo", 2500.0):
+                                    if aplica_envio_gratis:
                                         texto_crudo += f"\n\n🚚 *Nota extra: ¡Mi pedido califica para ENVÍO GRATIS!*"
                                         
                                     texto_crudo += f"\n\n⏱️ *Nota: Estoy consciente de que cuento con 4 días exactos (o la fecha establecida en mi ticket) para liquidar mi pedido y no perder mi apartado ni el anticipo del 10%.*"
-
+    
                                     # --- AQUÍ GUARDAMOS EL TEXTO EN MEMORIA POR SI EL BOTÓN FALLA ---
                                     st.session_state.wa_texto_crudo = texto_crudo
                                     st.session_state.wa_link = f"https://wa.me/524462879839?text={urllib.parse.quote(texto_crudo)}"
@@ -1682,7 +1695,10 @@ else:
         banner_frases = []
         if config_promos.get("promo_3x2", False): banner_frases.append("🌟 <b>¡SÚPER 3x2! Llevas 3, Pagas 2</b>")
         if config_promos.get("promo_15_off", False): banner_frases.append("🔥 <b>15% OFF</b>")
-        if config_promos.get("promo_mayorista", False): banner_frases.append("👑 <b>¡MAYORISTA! Figuras a $200 c/u</b>")
+        
+        if config_promos.get("promo_mayorista", {}).get("activa", False): 
+            banner_frases.append(f"👑 <b>¡MAYORISTA! Figuras a ${precio_may_dinamico:,.2f} c/u</b>")
+            
         for p in config_promos.get("volumen", []):
             if p["activa"]: banner_frases.append(f"📦 <b>{p['min_piezas']}+ {p['categoria']}s a ${p['precio_fijo']:,.2f} c/u</b>")
         for p in config_promos.get("monto", []):
@@ -1740,7 +1756,6 @@ else:
                             st.session_state.ruleta_jugada = True 
                             ganadores = random.sample(pool_cartas, tiros_ruleta)
                             
-                            # --- Animación de las cartas volteándose ---
                             for velocidad in range(12):
                                 html_ruleta = "<div style='display: flex; justify-content: center; align-items: center; gap: 15px; background: radial-gradient(circle, #222, #000); padding: 20px; border-radius: 10px; border: 2px solid #555; overflow: hidden;'>"
                                 for _ in range(tiros_ruleta):
@@ -1752,7 +1767,7 @@ else:
                                     """
                                 html_ruleta += "</div>"
                                 anim_placeholder.markdown(html_ruleta, unsafe_allow_html=True)
-                                time.sleep(0.1 + (velocidad * 0.02)) # Frenado progresivo
+                                time.sleep(0.1 + (velocidad * 0.02)) 
                                 
                             st.session_state.premios_ruleta = ganadores
                             st.rerun()
@@ -2055,12 +2070,14 @@ else:
                                 en_carrito_normal = sum(1 for item in st.session_state.carrito if item["_id"] == prod["_id"] and item.get("variante") == "normal")
                                 en_carrito_detalle = sum(1 for item in st.session_state.carrito if item["_id"] == prod["_id"] and item.get("variante") == "detalle")
                                 
+                                es_modo_mayorista = promo_seleccionada.startswith("👑 Mayorista") and tipo_real in tipos_con_atributo
+                                
                                 if stock_normal > 0:
-                                    cu_norm = " c/u" if stock_normal > 1 else ""
-                                    
-                                    # Override visual si es mayorista
-                                    precio_normal_display = 200.0 if promo_seleccionada == "👑 Mayorista $200" and tipo_real in tipos_con_atributo else precio_normal
-                                    st.write(f"🟢 **Perfecta:** ${precio_normal_display:,.2f}{cu_norm} (Disp: {stock_normal})")
+                                    if es_modo_mayorista:
+                                        st.write(f"🟢 **Perfecta** (Disp: {stock_normal})")
+                                    else:
+                                        cu_norm = " c/u" if stock_normal > 1 else ""
+                                        st.write(f"🟢 **Perfecta:** ${precio_normal:,.2f}{cu_norm} (Disp: {stock_normal})")
                                     
                                     if en_carrito_normal == 0:
                                         if st.button("🛒 Añadir", key=f"add_n_{prod['_id']}", use_container_width=True):
@@ -2077,10 +2094,12 @@ else:
                                     
                                 if stock_detalle > 0:
                                     st.markdown(f"<span style='color:#f39c12; font-size: 0.9em;'>⚠️ **Detalle:** {texto_detalle}</span>", unsafe_allow_html=True)
-                                    cu_det = " c/u" if stock_detalle > 1 else ""
                                     
-                                    precio_detalle_display = 200.0 if promo_seleccionada == "👑 Mayorista $200" and tipo_real in tipos_con_atributo else precio_detalle
-                                    st.write(f"🟠 **C/Detalle:** ${precio_detalle_display:,.2f}{cu_det} (Disp: {stock_detalle})")
+                                    if es_modo_mayorista:
+                                        st.write(f"🟠 **C/Detalle** (Disp: {stock_detalle})")
+                                    else:
+                                        cu_det = " c/u" if stock_detalle > 1 else ""
+                                        st.write(f"🟠 **C/Detalle:** ${precio_detalle:,.2f}{cu_det} (Disp: {stock_detalle})")
                                     
                                     if en_carrito_detalle == 0:
                                         if st.button("🛒 Añadir", key=f"add_d_{prod['_id']}", use_container_width=True):
