@@ -110,64 +110,125 @@ def obtener_foto_mongo(prod_id_str):
     doc = col_productos.find_one({"_id": ObjectId(prod_id_str)}, {"imagenes_b64": 1, "imagenes_detalle_b64": 1, "imagen_b64": 1})
     return doc if doc else {}
 
+@st.cache_data(ttl=600, max_entries=300, show_spinner=False)
+def obtener_fotos_lote(ids_tuple):
+    """OPTIMIZACIÓN: trae las fotos de varias piezas en UNA sola consulta a Mongo (en vez de una por pieza)."""
+    docs = col_productos.find(
+        {"_id": {"$in": [ObjectId(i) for i in ids_tuple]}},
+        {"imagenes_b64": 1, "imagenes_detalle_b64": 1, "imagen_b64": 1}
+    )
+    return {str(d["_id"]): d for d in docs}
+
+@st.cache_data(show_spinner=False, max_entries=4)
+def optimizar_imagen_sitio(b64_str, lado_max):
+    """OPTIMIZACIÓN: reduce el peso del fondo/logo UNA vez (queda en caché).
+    Se ve igual en pantalla, pero viaja muchos menos MB en cada clic."""
+    try:
+        img = Image.open(io.BytesIO(base64.b64decode(b64_str)))
+        img = ImageOps.exif_transpose(img)
+        tiene_transparencia = img.mode in ("RGBA", "LA") or (img.mode == "P" and "transparency" in img.info)
+        img.thumbnail((lado_max, lado_max))
+        buffer = io.BytesIO()
+        if tiene_transparencia:
+            img.save(buffer, format="PNG", optimize=True)
+            mime = "png"
+        else:
+            if img.mode != "RGB": img = img.convert("RGB")
+            img.save(buffer, format="JPEG", quality=85, optimize=True, progressive=True)
+            mime = "jpeg"
+        nuevo = base64.b64encode(buffer.getvalue()).decode("utf-8")
+        if len(nuevo) < len(b64_str):
+            return nuevo, mime
+    except Exception:
+        pass
+    return b64_str, "png"
+
+@st.cache_resource(show_spinner=False)
+def crear_indices():
+    """OPTIMIZACIÓN: índices para que el mantenimiento y los carritos no recorran toda la colección."""
+    try:
+        col_apartados.create_index("fecha_vencimiento")
+        col_carritos.create_index("fecha")
+    except Exception:
+        pass
+    return True
+
+crear_indices()
+
 def forzar_actualizacion():
     st.cache_data.clear()
 
 config_promos, config_data = obtener_configuraciones()
 fondo_b64 = config_data.get("fondo_b64") if config_data else None
 logo_b64 = config_data.get("logo_b64") if config_data else None
+fondo_mime, logo_mime = "png", "png"
+if fondo_b64: fondo_b64, fondo_mime = optimizar_imagen_sitio(fondo_b64, 1920)
+if logo_b64: logo_b64, logo_mime = optimizar_imagen_sitio(logo_b64, 600)
 
 # ---------------- SISTEMA ANTICAÍDAS Y TEMPORIZADOR INTELIGENTE (CORREGIDO) ----------------
-# Primero recuperamos el carrito y la promo de la BD para saber qué tiempo de expiración aplicar ANTES de borrarlo.
-carrito_guardado = col_carritos.find_one({"_id": st.session_state.session_id})
+TIPOS_FIGURA_MAYORISTA = ["Bakugan", "Trampa", "Vehículo", "Armamento", "BakuTech", "Set de Batalla", "Deka"]
+
+def mayorista_activo():
+    may = config_promos.get("promo_mayorista", {})
+    return isinstance(may, dict) and may.get("activa", False)
+
+def contar_figuras(items):
+    # BLINDAJE: el mínimo de 100 y el temporizador mayorista cuentan SOLO figuras (las que reciben el precio mayorista)
+    return sum(1 for it in items if it.get("tipo", "Bakugan") in TIPOS_FIGURA_MAYORISTA)
+
+def calcular_limite_minutos(promo, items):
+    if str(promo).startswith("👑 Mayorista") and mayorista_activo():
+        return 60 if contar_figuras(items) >= 100 else 1440  # 24 horas para llenar el carrito
+    return 30
 
 if 'ultima_actividad_carrito' not in st.session_state:
     st.session_state.ultima_actividad_carrito = hora_qro()
 
-if 'promo_radio' not in st.session_state:
-    # Si acabamos de entrar o recargar, intentamos recuperar la promo guardada.
-    st.session_state.promo_radio = carrito_guardado.get("promo", "Ninguna / Solo Envío Gratis") if carrito_guardado else "Ninguna / Solo Envío Gratis"
-
-# Evaluamos la promo ACTUAL (ya sea de la memoria de sesión o recuperada)
-promo_en_curso = st.session_state.promo_radio
-
-# Calculamos el límite dinámico
-if promo_en_curso.startswith("👑 Mayorista"):
-    cant_items_bd = len(carrito_guardado.get("items", [])) if carrito_guardado else 0
-    if cant_items_bd >= 100:
-        limite_minutos = 60
-    else:
-        limite_minutos = 1440 # 24 horas
-else:
-    limite_minutos = 30
-
 if 'carrito_inicializado' not in st.session_state:
-    if carrito_guardado and (hora_qro() - carrito_guardado.get("fecha", hora_qro()) < timedelta(minutes=limite_minutos)):
-        st.session_state.carrito = carrito_guardado.get("items", [])
-        st.session_state.ultima_actividad_carrito = carrito_guardado.get("fecha", hora_qro())
-    else:
-        st.session_state.carrito = []
+    # OPTIMIZACIÓN: el carrito se lee de Mongo SOLO al entrar o recargar (antes se consultaba en cada clic)
+    carrito_guardado = col_carritos.find_one({"_id": st.session_state.session_id})
+    st.session_state.carrito = []
+    if carrito_guardado:
+        promo_guardada = carrito_guardado.get("promo", "Ninguna")
+        items_guardados = carrito_guardado.get("items", [])
+        fecha_guardada = carrito_guardado.get("fecha", hora_qro())
+        if hora_qro() - fecha_guardada < timedelta(minutes=calcular_limite_minutos(promo_guardada, items_guardados)):
+            st.session_state.carrito = items_guardados
+            st.session_state.ultima_actividad_carrito = fecha_guardada
+            if 'promo_radio' not in st.session_state:
+                # Recuperamos la promo guardada (se valida más abajo contra las promos que sigan activas)
+                st.session_state.promo_radio = promo_guardada
     st.session_state.carrito_inicializado = True
+
+# Evaluamos la promo ACTUAL y su límite de tiempo
+promo_en_curso = st.session_state.get("promo_radio", "Ninguna")
+limite_minutos = calcular_limite_minutos(promo_en_curso, st.session_state.carrito)
 
 # Chequeo de caducidad en el loop actual
 if st.session_state.carrito and (hora_qro() - st.session_state.ultima_actividad_carrito > timedelta(minutes=limite_minutos)):
     st.session_state.carrito = []
     st.session_state.ultima_actividad_carrito = hora_qro()
     col_carritos.delete_one({"_id": st.session_state.session_id})
+    # BLINDAJE: mensajes exactos (el carrito no aparta stock; las piezas se apartan hasta confirmar)
     if limite_minutos == 60:
-        st.warning("⏳ Tu carrito mayorista expiró por inactividad de 1 hora tras alcanzar 100 piezas. Las piezas fueron liberadas para otros clientes.")
+        st.warning("⏳ Tu carrito mayorista se vació por 1 hora de inactividad tras juntar 100 figuras. Vuelve a armarlo y confirma tu apartado para asegurar tus piezas.")
     elif limite_minutos == 1440:
-        st.warning("⏳ Tu sesión mayorista caducó tras 24 horas. Las piezas fueron liberadas.")
+        st.warning("⏳ Tu carrito mayorista se vació tras 24 horas. Vuelve a armarlo y confirma tu apartado para asegurar tus piezas.")
     else:
-        st.warning("⏳ Tu carrito expiró por inactividad de 30 minutos. Las piezas fueron liberadas para otros clientes.")
+        st.warning("⏳ Tu carrito se vació por 30 minutos de inactividad. Recuerda: las piezas solo quedan apartadas al confirmar tu pedido.")
 
 def guardar_carrito():
     st.session_state.ultima_actividad_carrito = hora_qro()
     col_carritos.update_one(
         {"_id": st.session_state.session_id},
-        {"$set": {"items": st.session_state.carrito, "fecha": hora_qro(), "promo": st.session_state.get("promo_radio", "Ninguna / Solo Envío Gratis")}},
+        {"$set": {"items": st.session_state.carrito, "fecha": hora_qro(), "promo": st.session_state.get("promo_radio", "Ninguna")}},
         upsert=True
     )
+
+def al_cambiar_promo():
+    # BLINDAJE: guardamos la promo en cuanto el cliente la cambia, no solo al agregar piezas
+    if st.session_state.get("carrito"):
+        guardar_carrito()
 
 def comprimir_imagen(img_file):
     img_bytes = img_file.getvalue()
@@ -202,7 +263,7 @@ if not st.session_state.welcome_shown and not es_admin_url:
     2. **Añade al Carrito:** Da clic en "🛒 Añadir". Revisa si la pieza es *Perfecta* 🟢 o si tiene *Detalle* 🟠.
     **REGLA DE ORO:** ¡Pícale **SOLO UNA VEZ** al botón de añadir por cada pieza que quieras!
     3. **Elige tu Promo:** Si hay más de una promoción activa, elige cuál te conviene más (No son acumulables).
-    4. **Confirma tu Compra:** Llena tus datos y manda el WhatsApp automático para congelar tus piezas. Tienes 30 mins para hacerlo.
+    4. **Confirma tu Compra:** Llena tus datos y manda el WhatsApp automático para congelar tus piezas. Tienes 30 mins para hacerlo (24 h si eliges la promo Mayorista).
 
     ---
     ### ⏱️ REGLAS DE APARTADO (¡Obligatorio leer!)
@@ -225,12 +286,14 @@ if not st.session_state.welcome_shown and not es_admin_url:
 # ---------------- LÓGICA DE MINIATURAS GLOBALES ----------------
 catalogo_ram_entero = cargar_catalogo_textos()
 
+@st.cache_data(ttl=300, max_entries=3000, show_spinner=False)
 def buscar_miniatura_data(prod_name_full):
+    # OPTIMIZACIÓN: el resultado queda en caché, así no se recorre todo el catálogo en cada clic
     tipos_figuras = ["Bakugan", "Vehículo", "BakuTech", "Trampa", "Armamento", "Deka", "Set de Batalla"]
     best_match = None
     max_len = 0
-    
-    for p in catalogo_ram_entero:
+
+    for p in cargar_catalogo_textos():
         tipo_prod = p.get("tipo", "Bakugan")
         info_extra = ""
         if "atributo" in p and tipo_prod in tipos_figuras:
@@ -265,7 +328,7 @@ def abrir_tutorial():
     st.markdown("""
     1. **Añade al Carrito:** Pícale "🛒 Añadir" **SOLO UNA VEZ** por pieza.
     2. **Elige tu Promo:** Selecciona la promoción que prefieras (no acumulables).
-    3. **Confirma:** Manda el WhatsApp automático. (Tienes 30 mins antes de que expire el carrito).
+    3. **Confirma:** Manda el WhatsApp automático. (Tienes 30 mins antes de que expire el carrito; 24 h en promo Mayorista).
     
     ### ⏱️ REGLAS DE APARTADO
     * Obligatorio **anticipo del 10%**.
@@ -335,7 +398,12 @@ def modal_regalo_3x2():
     
     tipos_con_atributo = ["Bakugan", "Trampa", "Vehículo", "Armamento", "BakuTech", "Set de Batalla", "Deka"]
     catalogo_ram = cargar_catalogo_textos()
-    regalos = [p for p in catalogo_ram if p.get("tipo", "Bakugan") not in ["Carta", "BakuCore", "Extra"] and p.get("stock", 0) > 0 and p.get("precio", 0) <= precio_max]
+    # BLINDAJE: no regalamos una pieza que el cliente ya trae en el carrito si no queda más stock
+    en_carrito_por_id = {}
+    for it_c in st.session_state.get("carrito", []):
+        if it_c.get("variante", "normal") == "normal":
+            en_carrito_por_id[str(it_c["_id"])] = en_carrito_por_id.get(str(it_c["_id"]), 0) + 1
+    regalos = [p for p in catalogo_ram if p.get("tipo", "Bakugan") not in ["Carta", "BakuCore", "Extra"] and (p.get("stock", 0) - en_carrito_por_id.get(str(p["_id"]), 0)) > 0 and p.get("precio", 0) <= precio_max]
     
     regalos_filtrados = []
     for r in regalos:
@@ -467,7 +535,7 @@ iframe[title*="badge"] {{ display: none !important; opacity: 0 !important; point
 iframe[src*="badge"] {{ display: none !important; opacity: 0 !important; pointer-events: none !important; }}
 
 .stApp {{
-    {'background-image: url("data:image/png;base64,' + fondo_b64 + '");' if fondo_b64 else ''}
+    {'background-image: url("data:image/' + fondo_mime + ';base64,' + fondo_b64 + '");' if fondo_b64 else ''}
     background-size: cover; background-position: center; background-repeat: no-repeat; background-attachment: fixed;
 }}
 .block-container {{
@@ -541,7 +609,7 @@ tipos_producto = ["Bakugan", "Trampa", "Carta", "BakuCore", "Vehículo", "Armame
 tipos_con_atributo = ["Bakugan", "Trampa", "Vehículo", "Armamento", "BakuTech", "Set de Batalla", "Deka"]
 
 if logo_b64:
-    st.sidebar.markdown(f'<style>.logo-celular {{ width: 100%; border-radius: 8px; margin-bottom: 10px; }} @media (max-width: 768px) {{ .logo-celular {{ width: 45%; margin-left: auto; margin-right: auto; display: block; }} }} </style> <img src="data:image/png;base64,{logo_b64}" class="logo-celular">', unsafe_allow_html=True)
+    st.sidebar.markdown(f'<style>.logo-celular {{ width: 100%; border-radius: 8px; margin-bottom: 10px; }} @media (max-width: 768px) {{ .logo-celular {{ width: 45%; margin-left: auto; margin-right: auto; display: block; }} }} </style> <img src="data:image/{logo_mime};base64,{logo_b64}" class="logo-celular">', unsafe_allow_html=True)
 else:
     st.sidebar.markdown("### 🛒 Mi Tienda")
 
@@ -1218,7 +1286,11 @@ elif vista_admin == "📋 Ver Apartados":
             col_conf, col_pro, col_canc, col_notif = st.columns(4)
             with col_conf:
                 with st.expander("✅ Vender"):
-                    if config_promos.get("envio_gratis", {}).get("activa", False) and total_cliente >= config_promos.get("envio_gratis", {}).get("monto_minimo", 2500.0):
+                    # BLINDAJE: los pedidos mayoristas no califican para envío gratis (igual que en el carrito del cliente)
+                    es_pedido_mayorista = any(str(it.get("promo", "")).startswith("👑 Mayorista") for it in items)
+                    if es_pedido_mayorista:
+                        st.info("👑 Pedido Mayorista: no aplica envío gratis.")
+                    elif config_promos.get("envio_gratis", {}).get("activa", False) and total_cliente >= config_promos.get("envio_gratis", {}).get("monto_minimo", 2500.0):
                         st.success("🚚 ¡Este cliente califica para ENVÍO GRATIS!")
                         
                     st.markdown(f"<span style='font-size:14px; color:#aaa;'>Restante de piezas: ${restante:,.2f}</span>", unsafe_allow_html=True)
@@ -1298,6 +1370,9 @@ else:
             st.title("🛠️ Administrar Catálogo e Inventario")
             
             # --- MOTOR GENERADOR DE PDF ---
+            # OPTIMIZACIÓN: el contenido de un popover se ejecuta en CADA recarga aunque esté cerrado,
+            # así que los 2 PDFs se regeneraban en cada clic del admin. Ahora quedan en caché.
+            @st.cache_data(ttl=600, show_spinner=False)
             def generar_pdf(productos):
                 pdf = FPDF(orientation='P', unit='mm', format='A4')
                 pdf.set_auto_page_break(auto=False, margin=0)
@@ -1481,9 +1556,14 @@ else:
         with col_busc: busqueda_texto = st.text_input("Buscar", placeholder="🔍 Buscar...", label_visibility="collapsed")
         
         st.markdown("---")
+        # BLINDAJE: si la promo guardada ya no existe (ej. la apagaste o cambió "Ninguna"), regresamos a la primera opción.
+        # Evita que el selector truene o se quede en un estado raro.
+        if st.session_state.get("promo_radio") not in opciones_promo:
+            st.session_state.promo_radio = opciones_promo[0]
+
         if len(opciones_promo) > 1:
             st.markdown("##### 🏷️ Elige tu promoción (No son acumulables):")
-            promo_seleccionada = st.radio("promos", opciones_promo, horizontal=True, label_visibility="collapsed", key="promo_radio")
+            promo_seleccionada = st.radio("promos", opciones_promo, horizontal=True, label_visibility="collapsed", key="promo_radio", on_change=al_cambiar_promo)
         else:
             promo_seleccionada = texto_default
         st.markdown("---")
@@ -1503,6 +1583,17 @@ else:
                     st.session_state.abrir_modal_3x2 = True
                     st.rerun()
                     
+        # --- LETRERO MODO MAYORISTA ---
+        if promo_seleccionada.startswith("👑 Mayorista"):
+            figuras_llevas = contar_figuras(st.session_state.carrito)
+            st.markdown(f"""
+            <div style="background: linear-gradient(90deg, #8e44ad, #f1c40f); padding: 15px; border-radius: 8px; text-align: center; color: white; margin-bottom: 10px;">
+                <h3 style="margin: 0; color: white;">👑 ¡Modo Mayorista Activado!</h3>
+                <p style="margin: 0; font-size: 16px;">Arma tu lote de <b>100 figuras o más</b> y llévatelas a precio especial de mayoreo. Tienes <b>24 horas</b> para completar tu carrito.</p>
+                <p style="margin: 5px 0 0 0; font-size: 15px;">🛒 Llevas <b>{figuras_llevas} / 100</b> figuras</p>
+            </div>
+            """, unsafe_allow_html=True)
+
         if promo_seleccionada == "🔥 15% OFF":
             st.markdown(f"""
             <div style="background: linear-gradient(90deg, #e74c3c, #c0392b); padding: 15px; border-radius: 8px; text-align: center; color: white; margin-bottom: 10px;">
@@ -1533,7 +1624,11 @@ else:
                         ip["es_promo_mayorista"] = True
                         piezas_con_descuento_may += 1
                 if piezas_con_descuento_may > 0:
-                    textos_promos_activas.append(f"👑 ¡Precio mayorista de ${precio_may_dinamico:,.2f} aplicado a {piezas_con_descuento_may} pieza(s)!")
+                    faltan_may = max(0, 100 - piezas_con_descuento_may)
+                    if faltan_may > 0:
+                        textos_promos_activas.append(f"👑 Pedido Mayorista: llevas {piezas_con_descuento_may} de 100 figuras. ¡Te faltan {faltan_may} para poder confirmar!")
+                    else:
+                        textos_promos_activas.append(f"👑 ¡Pedido Mayorista listo! Llevas {piezas_con_descuento_may} figuras. Ya puedes confirmar tu apartado.")
                 else:
                     textos_promos_activas.append("⚠️ La promo mayorista está activa, pero no hay figuras en tu carrito.")
 
@@ -1616,6 +1711,8 @@ else:
                         item = ip["item"]
                         texto_precio = f"~~${item['precio']}~~ **${ip['precio_final']:,.2f}**" if ip["precio_final"] < item['precio'] else f"**${ip['precio_final']:,.2f}**"
                         if ip["precio_final"] == 0.0: texto_precio = f"~~${item['precio']}~~ **¡GRATIS!**"
+                        # MAYORISTA: sin precio rayado, solo lo que va a pagar
+                        if ip.get("es_promo_mayorista"): texto_precio = f"**${ip['precio_final']:,.2f}**"
                         c1.markdown(f"<span style='font-size:0.9em;'>{item['nombre']} - {texto_precio}</span>", unsafe_allow_html=True)
                         if c2.button("❌", key=f"del_cart_{i}_{item['_id']}"):
                             st.session_state.carrito.pop(i)
@@ -1638,56 +1735,86 @@ else:
                                 st.rerun()
                                 
                             # --- CANDADO ANTI-TRAMPAS MAYORISTA ---
-                            if promo_seleccionada.startswith("👑 Mayorista") and cantidad_carrito < 100:
-                                st.error(f"⚠️ Para confirmar tu pedido con precio Mayorista necesitas agregar mínimo 100 piezas. Solo llevas {cantidad_carrito}.")
+                            figuras_mayorista = sum(1 for ip in items_procesados if ip.get("es_promo_mayorista"))
+                            if promo_seleccionada.startswith("👑 Mayorista") and figuras_mayorista < 100:
+                                st.error(f"⚠️ Para confirmar tu pedido con precio Mayorista necesitas mínimo 100 figuras (Bakugans, Trampas, Vehículos, etc.). Llevas {figuras_mayorista}.")
                                 st.session_state.bloqueo_checkout = False
                             else:
-                                error_stock = False
-                                nombres_agotados = []
+                                # --- BLINDAJE 1: revisamos stock contando piezas repetidas (ej. la misma carta 2 veces por la ruleta) ---
+                                ids_unicos = list({str(ip["item"]["_id"]) for ip in items_procesados})
+                                docs_bd = {str(d["_id"]): d for d in col_productos.find({"_id": {"$in": [ObjectId(i) for i in ids_unicos]}}, {"stock": 1, "stock_detalle": 1})}
+
+                                def campo_stock_de(item):
+                                    # Piezas viejas sin campo 'stock_detalle' usan 'stock' (igual que antes)
+                                    doc = docs_bd.get(str(item["_id"]), {})
+                                    return "stock_detalle" if item.get("variante") == "detalle" and "stock_detalle" in doc else "stock"
+
+                                necesarios = {}
                                 for ip in items_procesados:
-                                    item_bd = ip["item"]
-                                    db_prod = col_productos.find_one({"_id": ObjectId(item_bd["_id"])})
-                                    campo_stock = "stock_detalle" if item_bd.get("variante") == "detalle" else "stock"
-                                    if not db_prod or db_prod.get(campo_stock, 0) <= 0:
-                                        error_stock = True
-                                        nombres_agotados.append(item_bd["nombre"])
-                                
-                                if error_stock:
-                                    st.error(f"⚠️ ¡Uy! Alguien te ganó estas piezas mientras las tenías en el carrito: {', '.join(nombres_agotados)}. Quítalas pulsando la '❌' para confirmar el resto.")
+                                    clave = (str(ip["item"]["_id"]), campo_stock_de(ip["item"]))
+                                    necesarios[clave] = necesarios.get(clave, 0) + 1
+
+                                nombres_agotados = []
+                                for (pid_str, campo_stock), cantidad in necesarios.items():
+                                    db_prod = docs_bd.get(pid_str)
+                                    if not db_prod or db_prod.get(campo_stock, 0) < cantidad:
+                                        nombre_ag = next((ip["item"]["nombre"] for ip in items_procesados if str(ip["item"]["_id"]) == pid_str), "Pieza")
+                                        nombres_agotados.append(nombre_ag)
+
+                                if nombres_agotados:
+                                    st.error(f"⚠️ ¡Uy! Ya no hay suficientes piezas de: {', '.join(nombres_agotados)}. Quítalas pulsando la '❌' para confirmar el resto.")
                                     st.session_state.bloqueo_checkout = False
                                 else:
+                                    # --- BLINDAJE 2: CHECKOUT ATÓMICO. Solo descuenta si TODAVÍA hay stock en ese instante. ---
+                                    # Si dos clientes confirman la misma pieza al mismo tiempo, solo uno la gana.
+                                    descontados = []
+                                    pieza_ganada = None
                                     for ip in items_procesados:
                                         item_bd = ip["item"]
                                         item_bd_id = ObjectId(item_bd["_id"])
-                                        db_prod = col_productos.find_one({"_id": item_bd_id})
-                                        campo_stock = "stock_detalle" if item_bd.get("variante") == "detalle" and "stock_detalle" in db_prod else "stock"
-                                        col_apartados.insert_one({
-                                            "producto_id": item_bd_id, "nombre_producto": item_bd["nombre"],
-                                            "precio": ip["precio_final"], "comprador_nombre": nom, "comprador_telefono": tel,
-                                            "fecha_apartado": hora_qro(), "fecha_vencimiento": hora_qro() + timedelta(days=4), "campo_stock": campo_stock, "anticipo": 0.0
-                                        })
-                                        col_productos.update_one({"_id": item_bd_id}, {"$inc": {campo_stock: -1}})
-                                    
-                                    texto_crudo = f"Hola, soy {nom}. Acabo de apartar {cantidad_carrito} piezas por un total de ${total_carrito:,.2f}.\n\nMis piezas son:\n"
-                                    for ip in items_procesados: texto_crudo += f"👉 {ip['item']['nombre']} (${ip['precio_final']:,.2f}){ip['msg_wa']}\n"
-                                    
-                                    if not promo_seleccionada.startswith("Ninguna"):
-                                        texto_crudo += f"\n*Nota: Seleccioné usar la promoción: {promo_seleccionada}.*"
-                                    
-                                    if aplica_envio_gratis:
-                                        texto_crudo += f"\n\n🚚 *Nota extra: ¡Mi pedido califica para ENVÍO GRATIS!*"
-                                        
-                                    texto_crudo += f"\n\n⏱️ *Nota: Estoy consciente de que cuento con 4 días exactos (o la fecha establecida en mi ticket) para liquidar mi pedido y no perder mi apartado ni el anticipo del 10%.*"
-    
-                                    # --- AQUÍ GUARDAMOS EL TEXTO EN MEMORIA POR SI EL BOTÓN FALLA ---
-                                    st.session_state.wa_texto_crudo = texto_crudo
-                                    st.session_state.wa_link = f"https://wa.me/524462879839?text={urllib.parse.quote(texto_crudo)}"
-                                    
-                                    st.session_state.carrito = [] 
-                                    st.session_state.bloqueo_checkout = False
-                                    guardar_carrito()
-                                    forzar_actualizacion()
-                                    st.rerun()
+                                        campo_stock = campo_stock_de(item_bd)
+                                        res = col_productos.update_one({"_id": item_bd_id, campo_stock: {"$gt": 0}}, {"$inc": {campo_stock: -1}})
+                                        if res.modified_count == 0:
+                                            pieza_ganada = item_bd["nombre"]
+                                            break
+                                        descontados.append((ip, item_bd_id, campo_stock))
+
+                                    if pieza_ganada:
+                                        # Regresamos el stock de lo que sí se alcanzó a descontar (no se queda nada a medias)
+                                        for _, pid, campo in descontados:
+                                            col_productos.update_one({"_id": pid}, {"$inc": {campo: 1}})
+                                        forzar_actualizacion()
+                                        st.error(f"⚠️ ¡Uy! Alguien te ganó esta pieza hace un momento: {pieza_ganada}. Quítala pulsando la '❌' para confirmar el resto.")
+                                        st.session_state.bloqueo_checkout = False
+                                    else:
+                                        for ip, item_bd_id, campo_stock in descontados:
+                                            col_apartados.insert_one({
+                                                "producto_id": item_bd_id, "nombre_producto": ip["item"]["nombre"],
+                                                "precio": ip["precio_final"], "comprador_nombre": nom, "comprador_telefono": tel,
+                                                "fecha_apartado": hora_qro(), "fecha_vencimiento": hora_qro() + timedelta(days=4), "campo_stock": campo_stock, "anticipo": 0.0,
+                                                "promo": promo_seleccionada
+                                            })
+
+                                        texto_crudo = f"Hola, soy {nom}. Acabo de apartar {cantidad_carrito} piezas por un total de ${total_carrito:,.2f}.\n\nMis piezas son:\n"
+                                        for ip in items_procesados: texto_crudo += f"👉 {ip['item']['nombre']} (${ip['precio_final']:,.2f}){ip['msg_wa']}\n"
+
+                                        if not promo_seleccionada.startswith("Ninguna"):
+                                            texto_crudo += f"\n*Nota: Seleccioné usar la promoción: {promo_seleccionada}.*"
+
+                                        if aplica_envio_gratis:
+                                            texto_crudo += f"\n\n🚚 *Nota extra: ¡Mi pedido califica para ENVÍO GRATIS!*"
+
+                                        texto_crudo += f"\n\n⏱️ *Nota: Estoy consciente de que cuento con 4 días exactos (o la fecha establecida en mi ticket) para liquidar mi pedido y no perder mi apartado ni el anticipo del 10%.*"
+
+                                        # --- AQUÍ GUARDAMOS EL TEXTO EN MEMORIA POR SI EL BOTÓN FALLA ---
+                                        st.session_state.wa_texto_crudo = texto_crudo
+                                        st.session_state.wa_link = f"https://wa.me/524462879839?text={urllib.parse.quote(texto_crudo)}"
+
+                                        st.session_state.carrito = []
+                                        st.session_state.bloqueo_checkout = False
+                                        guardar_carrito()
+                                        forzar_actualizacion()
+                                        st.rerun()
                         else: st.warning("⚠️ Faltan datos.")
                 else: st.info("Carrito vacío.")
 
@@ -1730,10 +1857,17 @@ else:
             tipo_ruleta = c_rul1.radio("Elige qué ruleta jugar:", ["🌎 Cartas Normales", "🇯🇵 Cartas Japonesas"], horizontal=True)
             tiros_ruleta = c_rul2.number_input("¿Cuántas cartas al azar quieres sacar?", min_value=1, max_value=5, value=1)
                 
+            # BLINDAJE: descontamos lo que ya está en el carrito para que la ruleta no regale/venda la misma carta 2 veces sin stock
+            en_carrito_normal_por_id = {}
+            for it_c in st.session_state.carrito:
+                if it_c.get("variante", "normal") == "normal":
+                    en_carrito_normal_por_id[str(it_c["_id"])] = en_carrito_normal_por_id.get(str(it_c["_id"]), 0) + 1
+
             pool_cartas = []
             nombres_vistos = set()
             for p in catalogo_ram_entero:
-                if p.get("tipo") == "Carta" and p.get("material") == "Cartón" and p.get("stock", 0) > 0:
+                stock_libre = p.get("stock", 0) - en_carrito_normal_por_id.get(str(p["_id"]), 0)
+                if p.get("tipo") == "Carta" and p.get("material") == "Cartón" and stock_libre > 0:
                     is_jap = "japones" in p.get("nombre", "").lower() or "japón" in p.get("nombre", "").lower()
                     if (tipo_ruleta == "🇯🇵 Cartas Japonesas" and is_jap) or (tipo_ruleta == "🌎 Cartas Normales" and not is_jap):
                         if p["nombre"] not in nombres_vistos:
@@ -2012,12 +2146,18 @@ else:
 
         # --- RENDERIZADO NORMAL DE TARJETAS (PÚBLICO, CATÁLOGO Y AGOTADOS) ---
         else:
+            # OPTIMIZACIÓN: fotos en bloques de 12 con una sola consulta por bloque
+            fotos_pagina = {}
+            ids_mostrar = [str(p["_id"]) for p in productos_a_mostrar]
+            for i_lote in range(0, len(ids_mostrar), 12):
+                fotos_pagina.update(obtener_fotos_lote(tuple(ids_mostrar[i_lote:i_lote + 12])))
+
             for fila_idx in range(0, len(productos_a_mostrar), 3):
                 cols = st.columns(3)
                 for col_idx in range(3):
                     if fila_idx + col_idx < len(productos_a_mostrar):
                         prod = productos_a_mostrar[fila_idx + col_idx]
-                        info_img = obtener_foto_mongo(str(prod["_id"]))
+                        info_img = fotos_pagina.get(str(prod["_id"]), {})
                         
                         with cols[col_idx]:
                             st.markdown(f"<div style='min-height: 60px; display: flex; align-items: center; justify-content: flex-start; margin-bottom: 5px;'><h4 style='margin: 0px; font-size: 20px; line-height: 1.2;'>{prod['nombre']}</h4></div>", unsafe_allow_html=True)
@@ -2033,7 +2173,7 @@ else:
                             
                             if imagenes_del_producto:
                                 html_galeria = '<div class="galeria-container">'
-                                for b64_img in imagenes_del_producto: html_galeria += f'<img src="data:image/jpeg;base64,{b64_img}" class="galeria-img">'
+                                for b64_img in imagenes_del_producto: html_galeria += f'<img src="data:image/jpeg;base64,{b64_img}" class="galeria-img" decoding="async" loading="lazy">'
                                 html_galeria += '</div>'
                                 st.markdown(html_galeria, unsafe_allow_html=True)
                                 
