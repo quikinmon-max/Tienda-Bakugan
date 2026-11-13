@@ -24,7 +24,7 @@ st.set_page_config(page_title="Bakugan Market", page_icon="🔥", layout="wide")
 def hora_qro():
     return datetime.utcnow() - timedelta(hours=6)
 
-# ---------------- INICIALIZAR MEMORIA ----------------
+# ---------------- INICIALIZAR MEMORIA Y SESIÓN ----------------
 if 'limite_items' not in st.session_state:
     st.session_state.limite_items = 12
 
@@ -37,6 +37,10 @@ if 'welcome_shown' not in st.session_state:
 # --- CANDADO ANTI-SPAM PARA EL CHECKOUT ---
 if 'bloqueo_checkout' not in st.session_state:
     st.session_state.bloqueo_checkout = False
+
+if 'session_id' not in st.session_state:
+    st.session_state.session_id = st.query_params.get("sesion", str(uuid.uuid4())[:8])
+    st.query_params["sesion"] = st.session_state.session_id
 
 # ---------------- CONEXIÓN A MONGODB ----------------
 @st.cache_resource
@@ -113,26 +117,31 @@ config_promos, config_data = obtener_configuraciones()
 fondo_b64 = config_data.get("fondo_b64") if config_data else None
 logo_b64 = config_data.get("logo_b64") if config_data else None
 
-# ---------------- SISTEMA ANTICAÍDAS Y TEMPORIZADOR INTELIGENTE ----------------
-if 'session_id' not in st.session_state:
-    st.session_state.session_id = st.query_params.get("sesion", str(uuid.uuid4())[:8])
-    st.query_params["sesion"] = st.session_state.session_id
+# ---------------- SISTEMA ANTICAÍDAS Y TEMPORIZADOR INTELIGENTE (CORREGIDO) ----------------
+# Primero recuperamos el carrito y la promo de la BD para saber qué tiempo de expiración aplicar ANTES de borrarlo.
+carrito_guardado = col_carritos.find_one({"_id": st.session_state.session_id})
 
 if 'ultima_actividad_carrito' not in st.session_state:
     st.session_state.ultima_actividad_carrito = hora_qro()
 
-# --- LÓGICA DE TIEMPO DINÁMICO ---
-promo_en_curso = st.session_state.get("promo_radio", "Ninguna")
+if 'promo_radio' not in st.session_state:
+    # Si acabamos de entrar o recargar, intentamos recuperar la promo guardada.
+    st.session_state.promo_radio = carrito_guardado.get("promo", "Ninguna / Solo Envío Gratis") if carrito_guardado else "Ninguna / Solo Envío Gratis"
+
+# Evaluamos la promo ACTUAL (ya sea de la memoria de sesión o recuperada)
+promo_en_curso = st.session_state.promo_radio
+
+# Calculamos el límite dinámico
 if promo_en_curso.startswith("👑 Mayorista"):
-    if len(st.session_state.get("carrito", [])) >= 100:
+    cant_items_bd = len(carrito_guardado.get("items", [])) if carrito_guardado else 0
+    if cant_items_bd >= 100:
         limite_minutos = 60
     else:
-        limite_minutos = 1440 # 24 horas (tiempo libre para llenar el carrito)
+        limite_minutos = 1440 # 24 horas
 else:
     limite_minutos = 30
 
 if 'carrito_inicializado' not in st.session_state:
-    carrito_guardado = col_carritos.find_one({"_id": st.session_state.session_id})
     if carrito_guardado and (hora_qro() - carrito_guardado.get("fecha", hora_qro()) < timedelta(minutes=limite_minutos)):
         st.session_state.carrito = carrito_guardado.get("items", [])
         st.session_state.ultima_actividad_carrito = carrito_guardado.get("fecha", hora_qro())
@@ -140,22 +149,23 @@ if 'carrito_inicializado' not in st.session_state:
         st.session_state.carrito = []
     st.session_state.carrito_inicializado = True
 
+# Chequeo de caducidad en el loop actual
 if st.session_state.carrito and (hora_qro() - st.session_state.ultima_actividad_carrito > timedelta(minutes=limite_minutos)):
     st.session_state.carrito = []
     st.session_state.ultima_actividad_carrito = hora_qro()
     col_carritos.delete_one({"_id": st.session_state.session_id})
     if limite_minutos == 60:
-        st.warning("⏳ Tu carrito mayorista expiró por inactividad de 1 hora. Las piezas fueron liberadas para otros clientes.")
+        st.warning("⏳ Tu carrito mayorista expiró por inactividad de 1 hora tras alcanzar 100 piezas. Las piezas fueron liberadas para otros clientes.")
     elif limite_minutos == 1440:
         st.warning("⏳ Tu sesión mayorista caducó tras 24 horas. Las piezas fueron liberadas.")
     else:
-        st.warning("⏳ Tu carrito expiró por inactividad. Las piezas fueron liberadas para otros clientes.")
+        st.warning("⏳ Tu carrito expiró por inactividad de 30 minutos. Las piezas fueron liberadas para otros clientes.")
 
 def guardar_carrito():
     st.session_state.ultima_actividad_carrito = hora_qro()
     col_carritos.update_one(
         {"_id": st.session_state.session_id},
-        {"$set": {"items": st.session_state.carrito, "fecha": hora_qro()}},
+        {"$set": {"items": st.session_state.carrito, "fecha": hora_qro(), "promo": st.session_state.get("promo_radio", "Ninguna / Solo Envío Gratis")}},
         upsert=True
     )
 
@@ -216,7 +226,6 @@ if not st.session_state.welcome_shown and not es_admin_url:
 catalogo_ram_entero = cargar_catalogo_textos()
 
 def buscar_miniatura_data(prod_name_full):
-    """Busca exacto por nombre + atributo para no confundir piezas, y devuelve foto, nombre y galería completa para hacer zoom."""
     tipos_figuras = ["Bakugan", "Vehículo", "BakuTech", "Trampa", "Armamento", "Deka", "Set de Batalla"]
     best_match = None
     max_len = 0
@@ -233,7 +242,6 @@ def buscar_miniatura_data(prod_name_full):
         elif "simbolo" in p and tipo_prod == "BakuCore":
             info_extra = p.get('simbolo', '')
         
-        # Blindaje: Debe coincidir el nombre exacto y el atributo exacto para no mezclar colores
         if p['nombre'] in prod_name_full and (info_extra in prod_name_full or not info_extra):
             if len(p['nombre']) > max_len:
                 max_len = len(p['nombre'])
@@ -246,7 +254,7 @@ def buscar_miniatura_data(prod_name_full):
         if not imgs and "imagen_b64" in info: imgs = [info["imagen_b64"]]
         if imgs:
             if tipo_prod in tipos_figuras and len(imgs) > 1:
-                return imgs[1], p['nombre'], imgs # Segunda foto abierta
+                return imgs[1], p['nombre'], imgs
             return imgs[0], p['nombre'], imgs
             
     return None, None, None
@@ -355,7 +363,6 @@ def modal_regalo_3x2():
                 st.session_state.ruleta_3x2_jugada = True 
                 ganador = random.choice(regalos_filtrados)
                 
-                # --- Animación de las cartas volteándose ---
                 for velocidad in range(12):
                     rotacion = velocidad * 30
                     html_ruleta = f"""
@@ -366,7 +373,7 @@ def modal_regalo_3x2():
                     </div>
                     """
                     anim_placeholder.markdown(html_ruleta, unsafe_allow_html=True)
-                    time.sleep(0.1 + (velocidad * 0.02)) # Frenado progresivo
+                    time.sleep(0.1 + (velocidad * 0.02))
                     
                 st.session_state.premio_3x2 = ganador
                 st.rerun()
@@ -614,7 +621,6 @@ if vista_admin == "📦 Inventario Detallado":
     total_detalles_global = 0
     lista_piezas_con_detalle = []
     
-    # ---------------- PROCESAMIENTO DE INVENTARIO ----------------
     for p in catalogo_ram_entero:
         sn = p.get("stock", 0)
         sd = p.get("stock_detalle", 0)
@@ -635,7 +641,6 @@ if vista_admin == "📦 Inventario Detallado":
         
         tipo = p.get("tipo", "Bakugan")
         
-        # 1. CLASIFICACIÓN POR CATEGORÍA ESTRICTA
         if tipo == "Bakugan":
             categorias_inv["Bakugan"]["pz"] += stock_total
             categorias_inv["Bakugan"]["val"] += valor_item
@@ -654,7 +659,6 @@ if vista_admin == "📦 Inventario Detallado":
             categorias_inv["Extra"]["pz"] += stock_total
             categorias_inv["Extra"]["val"] += valor_item
             
-        # 2. CLASIFICACIÓN POR ATRIBUTO Y ESTADO FÍSICO (Solo tipos compatibles)
         if "atributo" in p and tipo in tipos_con_atributo:
             attr1 = p.get("atributo", "")
             attr2 = p.get("atributo_2", "Ninguno")
@@ -676,7 +680,6 @@ if vista_admin == "📦 Inventario Detallado":
     st.markdown("### 📊 Desglose por Categoría")
     st.markdown("<div style='margin-bottom: 10px;'></div>", unsafe_allow_html=True)
     
-    # Fila 1
     c1, c2, c3, c4 = st.columns(4)
     c1.metric(f"{categorias_inv['Bakugan']['emoji']} Bakugans", f"{categorias_inv['Bakugan']['pz']} pz", f"Valor: ${categorias_inv['Bakugan']['val']:,.2f}", delta_color="off")
     c2.metric(f"{categorias_inv['BakuTech']['emoji']} BakuTechs", f"{categorias_inv['BakuTech']['pz']} pz", f"Valor: ${categorias_inv['BakuTech']['val']:,.2f}", delta_color="off")
@@ -684,7 +687,6 @@ if vista_admin == "📦 Inventario Detallado":
     c4.metric(f"{categorias_inv['Trampa']['emoji']} Trampas", f"{categorias_inv['Trampa']['pz']} pz", f"Valor: ${categorias_inv['Trampa']['val']:,.2f}", delta_color="off")
     
     st.markdown("<div style='margin-bottom: 10px;'></div>", unsafe_allow_html=True)
-    # Fila 2
     c5, c6, c7, c8 = st.columns(4)
     c5.metric(f"{categorias_inv['Armamento']['emoji']} Armamentos", f"{categorias_inv['Armamento']['pz']} pz", f"Valor: ${categorias_inv['Armamento']['val']:,.2f}", delta_color="off")
     c6.metric(f"{categorias_inv['Deka']['emoji']} Dekas", f"{categorias_inv['Deka']['pz']} pz", f"Valor: ${categorias_inv['Deka']['val']:,.2f}", delta_color="off")
@@ -692,7 +694,6 @@ if vista_admin == "📦 Inventario Detallado":
     c8.metric(f"{categorias_inv['BakuCore']['emoji']} BakuCores", f"{categorias_inv['BakuCore']['pz']} pz", f"Valor: ${categorias_inv['BakuCore']['val']:,.2f}", delta_color="off")
     
     st.markdown("<div style='margin-bottom: 10px;'></div>", unsafe_allow_html=True)
-    # Fila 3
     c9, c10, c11, _ = st.columns(4)
     c9.metric(f"{categorias_inv['Carta Metal']['emoji']} Cartas Metal", f"{categorias_inv['Carta Metal']['pz']} pz", f"Valor: ${categorias_inv['Carta Metal']['val']:,.2f}", delta_color="off")
     c10.metric(f"{categorias_inv['Carta Cartón']['emoji']} Cartas Cartón", f"{categorias_inv['Carta Cartón']['pz']} pz", f"Valor: ${categorias_inv['Carta Cartón']['val']:,.2f}", delta_color="off")
@@ -702,7 +703,6 @@ if vista_admin == "📦 Inventario Detallado":
     st.markdown(f"### 🧬 Desglose por Atributo (Facciones) | 🟢 {total_perfectas_global} Perfectas - 🟠 {total_detalles_global} c/Detalle en todo el inventario")
     st.markdown("<div style='margin-bottom: 10px;'></div>", unsafe_allow_html=True)
     
-    # Renderizamos los atributos con su info de perfectas y defectuosas
     a1, a2, a3, a4 = st.columns(4)
     a1.metric("🔥 Pyrus", f"{attr_counts['Pyrus 🔥']['total']} pz", f"🟢 {attr_counts['Pyrus 🔥']['normal']} N | 🟠 {attr_counts['Pyrus 🔥']['detalle']} D", delta_color="off")
     a2.metric("💧 Aquos", f"{attr_counts['Aquos 💧']['total']} pz", f"🟢 {attr_counts['Aquos 💧']['normal']} N | 🟠 {attr_counts['Aquos 💧']['detalle']} D", delta_color="off")
@@ -716,7 +716,6 @@ if vista_admin == "📦 Inventario Detallado":
     a7.metric("🟡 Aurelus", f"{attr_counts['Aurelus 🟡']['total']} pz", f"🟢 {attr_counts['Aurelus 🟡']['normal']} N | 🟠 {attr_counts['Aurelus 🟡']['detalle']} D", delta_color="off")
     a8.metric("🧬 Dobles / Fusión", f"{attr_counts['Dobles / Fusión 🧬']['total']} pz", f"🟢 {attr_counts['Dobles / Fusión 🧬']['normal']} N | 🟠 {attr_counts['Dobles / Fusión 🧬']['detalle']} D", delta_color="off")
 
-    # ---------------- LISTADO DE MERMAS / DETALLES ----------------
     st.markdown("---")
     st.markdown(f"### 🟠 Reporte de Piezas con Detalle ({total_detalles_global})")
     
@@ -1468,10 +1467,10 @@ else:
         if config_promos.get("promo_3x2", False): opciones_promo.append("🌟 Súper 3x2")
         if config_promos.get("promo_15_off", False): opciones_promo.append("🔥 15% OFF")
         
-        # Leemos el precio dinámico de la promo mayorista
+        # Leemos el precio dinámico de la promo mayorista y ajustamos el texto del menú
         precio_may_dinamico = config_promos.get("promo_mayorista", {}).get("precio", 200.0) if isinstance(config_promos.get("promo_mayorista", {}), dict) else 200.0
         if config_promos.get("promo_mayorista", {}).get("activa", False): 
-            opciones_promo.append(f"👑 Mayorista ${precio_may_dinamico:,.2f}")
+            opciones_promo.append(f"👑 Mayorista")
             
         if config_promos.get("volumen", []) and any(p["activa"] for p in config_promos["volumen"]): opciones_promo.append("📦 Precio por Volumen")
         if config_promos.get("monto", []) and any(p["activa"] for p in config_promos["monto"]): opciones_promo.append("🤑 Descuento por Monto")
@@ -1596,7 +1595,7 @@ else:
                 if ip["es_promo_3x2"]: ip["precio_final"], ip["msg_wa"] = 0.0, " (¡Gratis 3x2!)"
                 elif ip["es_promo_15"]: ip["precio_final"], ip["msg_wa"] = ip["precio_efec"], " (-15%)"
                 elif ip["es_promo_vol"]: ip["precio_final"], ip["msg_wa"] = ip["precio_efec"], f" (Promo ${ip['precio_efec']})"
-                elif ip.get("es_promo_mayorista"): ip["precio_final"], ip["msg_wa"] = ip["precio_efec"], f" (Mayorista ${precio_may_dinamico})"
+                elif ip.get("es_promo_mayorista"): ip["precio_final"], ip["msg_wa"] = ip["precio_efec"], " (Mayorista)"
                 elif mejor_promo_monto: ip["precio_final"], ip["msg_wa"] = ip["precio_efec"] * (1 - (mejor_promo_monto["porcentaje"] / 100.0)), f" (-{mejor_promo_monto['porcentaje']}%)"
                 else: ip["precio_final"], ip["msg_wa"] = ip["precio_efec"], ""
                 total_carrito += ip["precio_final"]
@@ -1697,7 +1696,7 @@ else:
         if config_promos.get("promo_15_off", False): banner_frases.append("🔥 <b>15% OFF</b>")
         
         if config_promos.get("promo_mayorista", {}).get("activa", False): 
-            banner_frases.append(f"👑 <b>¡MAYORISTA! Figuras a ${precio_may_dinamico:,.2f} c/u</b>")
+            banner_frases.append(f"👑 <b>¡MAYORISTA! Activo</b>")
             
         for p in config_promos.get("volumen", []):
             if p["activa"]: banner_frases.append(f"📦 <b>{p['min_piezas']}+ {p['categoria']}s a ${p['precio_fijo']:,.2f} c/u</b>")
@@ -1705,7 +1704,7 @@ else:
             if p["activa"]: banner_frases.append(f"🤑 <b>{p['porcentaje']}% OFF</b> en compras > ${p['min_total']:,.2f}")
         
         # --- ENVÍO GRATIS LIGADO EN LA BARRA DE PROMOS DE FORMA DINÁMICA ---
-        if config_promos.get("envio_gratis", {}).get("activa", False):
+        if config_promos.get("envio_gratis", {}).get("activa", False) and not promo_seleccionada.startswith("👑 Mayorista"):
             m_env = config_promos["envio_gratis"].get("monto_minimo", 2500.0)
             banner_frases.append(f"🚚 <b>ENVÍO GRATIS en compras >= ${m_env:,.2f}</b>")
                 
@@ -1756,6 +1755,7 @@ else:
                             st.session_state.ruleta_jugada = True 
                             ganadores = random.sample(pool_cartas, tiros_ruleta)
                             
+                            # --- Animación de las cartas volteándose ---
                             for velocidad in range(12):
                                 html_ruleta = "<div style='display: flex; justify-content: center; align-items: center; gap: 15px; background: radial-gradient(circle, #222, #000); padding: 20px; border-radius: 10px; border: 2px solid #555; overflow: hidden;'>"
                                 for _ in range(tiros_ruleta):
@@ -1767,7 +1767,7 @@ else:
                                     """
                                 html_ruleta += "</div>"
                                 anim_placeholder.markdown(html_ruleta, unsafe_allow_html=True)
-                                time.sleep(0.1 + (velocidad * 0.02)) 
+                                time.sleep(0.1 + (velocidad * 0.02)) # Frenado progresivo
                                 
                             st.session_state.premios_ruleta = ganadores
                             st.rerun()
