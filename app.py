@@ -13,6 +13,8 @@ from collections import defaultdict
 from fpdf import FPDF
 import tempfile
 import os
+import threading
+import requests
 
 # --- BLINDAJE PARA FOTOS PESADAS ---
 ImageFile.LOAD_TRUNCATED_IMAGES = True
@@ -224,6 +226,42 @@ def guardar_carrito():
         {"$set": {"items": st.session_state.carrito, "fecha": hora_qro(), "promo": st.session_state.get("promo_radio", "Ninguna")}},
         upsert=True
     )
+
+# ---------------- AVISO DE PEDIDOS NUEVOS POR TELEGRAM ----------------
+def _leer_claves_telegram():
+    try:
+        return st.secrets.get("TELEGRAM_TOKEN", ""), str(st.secrets.get("TELEGRAM_CHAT_ID", ""))
+    except Exception:
+        return "", ""
+
+def _enviar_telegram(texto, token=None, chat_id=None):
+    try:
+        if token is None or chat_id is None:
+            token, chat_id = _leer_claves_telegram()
+        if not token or not chat_id:
+            return False, "Faltan TELEGRAM_TOKEN o TELEGRAM_CHAT_ID en los secrets."
+        r = requests.post(f"https://api.telegram.org/bot{token}/sendMessage",
+                          data={"chat_id": chat_id, "text": texto[:4000]}, timeout=15)
+        return r.status_code == 200, f"Respuesta {r.status_code}: {r.text[:200]}"
+    except Exception as e:
+        return False, str(e)
+
+def avisar_pedido_nuevo(nombre, telefono, items_procesados, total, promo):
+    """Manda el aviso EN SEGUNDO PLANO: si Telegram tarda o falla, el apartado del cliente no se traba."""
+    tel_limpio = "".join(ch for ch in str(telefono) if ch.isdigit())
+    lineas = ["🔔 NUEVO APARTADO - Baku-Market", f"👤 {nombre}", f"📞 {telefono}",
+              f"🛒 {len(items_procesados)} pieza(s) - ${total:,.2f}"]
+    if promo and not str(promo).startswith("Ninguna"):
+        lineas.append(f"🏷️ Promo: {promo}")
+    lineas.append("")
+    for ip in items_procesados[:60]:
+        lineas.append(f"• {ip['item']['nombre']} (${ip['precio_final']:,.2f})")
+    if len(items_procesados) > 60:
+        lineas.append(f"...y {len(items_procesados) - 60} pieza(s) más (revisa el panel)")
+    if tel_limpio:
+        lineas += ["", f"💬 Escribirle: https://wa.me/52{tel_limpio[-10:]}"]
+    token, chat_id = _leer_claves_telegram()
+    threading.Thread(target=_enviar_telegram, args=("\n".join(lineas), token, chat_id), daemon=True).start()
 
 def al_cambiar_promo():
     # BLINDAJE: guardamos la promo en cuanto el cliente la cambia, no solo al agregar piezas
@@ -651,6 +689,13 @@ if es_admin_url:
         if st.sidebar.button("🚪 Cerrar Sesión"):
             st.session_state.admin_autenticado = False
             st.rerun()
+        # 🔔 Contador de pedidos nuevos (sin ver)
+        try:
+            pedidos_nuevos = len(col_apartados.distinct("comprador_telefono", {"visto": False}))
+        except Exception:
+            pedidos_nuevos = 0
+        if pedidos_nuevos > 0:
+            st.sidebar.warning(f"🔔 Tienes {pedidos_nuevos} pedido(s) nuevo(s) en 📋 Ver Apartados")
         vista_admin = st.sidebar.radio("Opciones de Administrador", ["Ver Catálogo", "❌ Agotados (Stock 0)", "⏳ Programados", "➕ Agregar Producto", "📋 Ver Apartados", "📊 Finanzas y Ventas", "📦 Inventario Detallado", "🎨 Personalizar Página", "🎁 Gestor de Promociones", "⭐ Gestor de Referencias"])
 
 st.sidebar.markdown("<div style='height: 400px;'></div>", unsafe_allow_html=True)
@@ -1191,6 +1236,17 @@ elif vista_admin == "➕ Agregar Producto":
 
 elif vista_admin == "📋 Ver Apartados":
     st.title("📋 Registro de Clientes y Apartados")
+
+    c_av1, c_av2 = st.columns(2)
+    with c_av1:
+        if st.button("📲 Probar aviso de Telegram", use_container_width=True):
+            ok, detalle = _enviar_telegram("✅ Prueba de avisos de Baku-Market: ¡ya te llegan los pedidos nuevos!")
+            if ok: st.success("¡Listo! Revisa tu Telegram.")
+            else: st.error(f"No se pudo enviar. {detalle}")
+    with c_av2:
+        if st.button("👁️ Marcar todos los pedidos como vistos", use_container_width=True):
+            col_apartados.update_many({"visto": False}, {"$set": {"visto": True}})
+            st.rerun()
     todos_los_apartados = list(col_apartados.find({}))
     
     diccionario_productos = {str(p["_id"]): p for p in catalogo_ram_entero}
@@ -1206,7 +1262,13 @@ elif vista_admin == "📋 Ver Apartados":
         
         for tel, items in clientes_dict.items():
             nombre_cliente = items[0].get("comprador_nombre", "Desconocido")
-            st.markdown(f'<div class="tarjeta-cliente"><h4>👤 {nombre_cliente} | 📞 WA: {tel}</h4>', unsafe_allow_html=True)
+            es_nuevo = any(it.get("visto") is False for it in items)
+            etiqueta_nuevo = ' <span style="background:#e74c3c; color:white; padding:2px 8px; border-radius:6px; font-size:13px;">🆕 NUEVO</span>' if es_nuevo else ""
+            st.markdown(f'<div class="tarjeta-cliente"><h4>👤 {nombre_cliente} | 📞 WA: {tel}{etiqueta_nuevo}</h4>', unsafe_allow_html=True)
+            if es_nuevo:
+                if st.button("👁️ Marcar como visto", key=f"visto_{tel}"):
+                    col_apartados.update_many({"_id": {"$in": [it["_id"] for it in items]}}, {"$set": {"visto": True}})
+                    st.rerun()
             total_cliente, total_anticipo = 0, 0
             fechas_venc, nombres_items = [], []
             
@@ -1812,7 +1874,7 @@ else:
                                                 "producto_id": item_bd_id, "nombre_producto": ip["item"]["nombre"],
                                                 "precio": ip["precio_final"], "comprador_nombre": nom, "comprador_telefono": tel,
                                                 "fecha_apartado": hora_qro(), "fecha_vencimiento": hora_qro() + timedelta(days=4), "campo_stock": campo_stock, "anticipo": 0.0,
-                                                "promo": promo_seleccionada
+                                                "promo": promo_seleccionada, "visto": False
                                             })
 
                                         texto_crudo = f"Hola, soy {nom}. Acabo de apartar {cantidad_carrito} piezas por un total de ${total_carrito:,.2f}.\n\nMis piezas son:\n"
@@ -1829,6 +1891,9 @@ else:
                                         # --- AQUÍ GUARDAMOS EL TEXTO EN MEMORIA POR SI EL BOTÓN FALLA ---
                                         st.session_state.wa_texto_crudo = texto_crudo
                                         st.session_state.wa_link = f"https://wa.me/524462879839?text={urllib.parse.quote(texto_crudo)}"
+
+                                        # 🔔 Aviso a tu Telegram (en segundo plano, no traba al cliente)
+                                        avisar_pedido_nuevo(nom, tel, items_procesados, total_carrito, promo_seleccionada)
 
                                         st.session_state.carrito = []
                                         st.session_state.bloqueo_checkout = False
