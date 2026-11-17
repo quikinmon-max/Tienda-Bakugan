@@ -241,7 +241,7 @@ def _enviar_telegram(texto, token=None, chat_id=None):
         if not token or not chat_id:
             return False, "Faltan TELEGRAM_TOKEN o TELEGRAM_CHAT_ID en los secrets."
         r = requests.post(f"https://api.telegram.org/bot{token}/sendMessage",
-                          data={"chat_id": chat_id, "text": texto[:4000]}, timeout=15)
+                          data={"chat_id": chat_id, "text": texto[:4000], "disable_web_page_preview": "true", "link_preview_options": '{"is_disabled": true}'}, timeout=15)
         return r.status_code == 200, f"Respuesta {r.status_code}: {r.text[:200]}"
     except Exception as e:
         return False, str(e)
